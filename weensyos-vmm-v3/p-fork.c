@@ -9,11 +9,23 @@ uint8_t* heap_top;
 uint8_t* stack_bottom;
 
 void process_main(void) {
+    // Fork a total of three new copies.
+    pid_t p1 = sys_fork();
+    assert(p1 >= 0);
+    pid_t p2 = sys_fork();
+    assert(p2 >= 0);
+
+    // Check fork return values: fork should return 0 to child.
+    if (sys_getpid() == 1) {
+        assert(p1 != 0 && p2 != 0 && p1 != p2);
+    } else {
+        assert(p1 == 0 || p2 == 0);
+    }
+
+    // The rest of this code is like p-allocator.c.
 
     pid_t p = sys_getpid();
     srand(p);
-
-    //app_printf(p, "process_main, pid: %d\n", p);
 
     // The heap starts on the page right after the 'end' symbol,
     // whose address is the first address not allocated to process code

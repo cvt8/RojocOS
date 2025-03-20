@@ -9,11 +9,8 @@ uint8_t* heap_top;
 uint8_t* stack_bottom;
 
 void process_main(void) {
-
     pid_t p = sys_getpid();
     srand(p);
-
-    //app_printf(p, "process_main, pid: %d\n", p);
 
     // The heap starts on the page right after the 'end' symbol,
     // whose address is the first address not allocated to process code

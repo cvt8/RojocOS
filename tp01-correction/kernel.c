@@ -90,7 +90,18 @@ void kernel(const char* command) {
 
     // nullptr is inaccessible even to the kernel
     virtual_memory_map(kernel_pagetable, (uintptr_t) 0, (uintptr_t) 0,
-		       PAGESIZE, PTE_P, NULL); // | PTE_W | PTE_U
+		       PAGESIZE, PTE_P, NULL); // | PTW_W | PTE_U
+
+    // *** Q1. Isolate kernel memory from user processes
+    virtual_memory_map(kernel_pagetable,
+		       (uintptr_t) PAGESIZE,
+		       (uintptr_t) PAGESIZE,
+		       0x00100000 - PAGESIZE, PTE_P | PTE_W, NULL);
+    virtual_memory_map(kernel_pagetable,
+		       (uintptr_t) console,
+		       (uintptr_t) console,
+		       PAGESIZE, PTE_P | PTE_W | PTE_U, NULL);
+    // *** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***
 
     // Set up process descriptors
     memset(processes, 0, sizeof(processes));
@@ -100,19 +111,13 @@ void kernel(const char* command) {
     }
 
     if (command && strcmp(command, "fork") == 0) {
-        log_printf("kernel(\"fork\")\n");
         process_setup(1, 4);
     } else if (command && strcmp(command, "forkexit") == 0) {
-        log_printf("kernel(\"forkexit\")\n");
-    
         process_setup(1, 5);
     } else {
-        log_printf("kernel(\"default\")\n");
         for (pid_t i = 1; i <= 4; ++i) {
             process_setup(i, i - 1);
         }
-
-        process_setup(5, 6);
     }
 
     // Switch to the first process using run()
@@ -149,6 +154,18 @@ x86_64_pagetable* pagetable_alloc(void)
     return (x86_64_pagetable*)page_alloc(current->p_pid);
 }
 
+void copy_pagetable(x86_64_pagetable* dst_pt, x86_64_pagetable* src_pt, uintptr_t max)
+{
+    vamapping vm;
+
+    for (uintptr_t va = 0; va < max; va += PAGESIZE) {
+	vm = virtual_memory_lookup(src_pt, va);
+	if (vm.perm != 0)
+	    virtual_memory_map(dst_pt, va, vm.pa, PAGESIZE, vm.perm,
+			       pagetable_alloc);
+    }
+}
+
 // process_setup(pid, program_number)
 //    Load application program `program_number` as process number `pid`.
 //    This loads the application's code and data into memory, sets its
@@ -156,18 +173,77 @@ x86_64_pagetable* pagetable_alloc(void)
 
 void process_setup(pid_t pid, int program_number) {
     process_init(&processes[pid], 0);
-    processes[pid].p_pagetable = kernel_pagetable;
-    ++pageinfo[PAGENUMBER(kernel_pagetable)].refcount;
-    int r = program_load(&processes[pid], program_number, NULL);
+
+    // *** Q2 individual page tables
+    current = &processes[pid];
+    x86_64_pagetable* p_pagetable = pagetable_alloc();
+    assert(p_pagetable != NULL);
+
+    // Q3. option a: initialize by copy
+    //copy_pagetable(p_pagetable, kernel_pagetable, PROC_START_ADDR);
+
+    // Q3. option b: recreate manually
+    /*
+    virtual_memory_map(p_pagetable,
+		       PAGESIZE,
+		       PAGESIZE,
+		       KERNEL_STACK_TOP - PAGESIZE,
+		       PTE_P | PTE_W, pagetable_alloc);
+    virtual_memory_map(p_pagetable,
+		       (uintptr_t) console,
+		       (uintptr_t) console,
+		       PAGESIZE, PTE_P | PTE_W | PTE_U, pagetable_alloc);
+    */
+
+    // Q3. option c: recreate manually but restrict to kernel and console
+    extern char end[];
+    virtual_memory_map(p_pagetable,
+		       KERNEL_START_ADDR,
+		       KERNEL_START_ADDR,
+		       PAGEADDRESS(PAGENUMBER((uintptr_t)end) + 1)
+			    - KERNEL_START_ADDR,
+		       PTE_P | PTE_W, pagetable_alloc);
+    virtual_memory_map(p_pagetable,
+		       KERNEL_STACK_TOP - PAGESIZE,
+		       KERNEL_STACK_TOP - PAGESIZE,
+		       PAGESIZE,
+		       PTE_P | PTE_W, pagetable_alloc);
+    virtual_memory_map(p_pagetable,
+		       (uintptr_t) console,
+		       (uintptr_t) console,
+		       PAGESIZE, PTE_P | PTE_W | PTE_U, pagetable_alloc);
+
+    // processes[pid].p_pagetable = kernel_pagetable;
+    // ++pageinfo[PAGENUMBER(kernel_pagetable)].refcount;
+    // int r = program_load(&processes[pid], program_number, NULL);
+
+    processes[pid].p_pagetable = p_pagetable;
+    int r = program_load(&processes[pid], program_number, pagetable_alloc);
     assert(r >= 0);
+
+    // *** Q4. Overlapping address spaces
+
+    /*
     processes[pid].p_registers.reg_rsp = PROC_START_ADDR + PROC_SIZE * pid;
     uintptr_t stack_page = processes[pid].p_registers.reg_rsp - PAGESIZE;
     assign_physical_page(stack_page, pid);
-    virtual_memory_map(processes[pid].p_pagetable, stack_page, stack_page,
-                       PAGESIZE, PTE_P | PTE_W | PTE_U, NULL);
+
+    virtual_memory_map(p_pagetable, stack_page, stack_page,
+                       PAGESIZE, PTE_P | PTE_W | PTE_U, pagetable_alloc);
+    */
+
+    processes[pid].p_registers.reg_rsp = MEMSIZE_VIRTUAL;
+    uintptr_t stack_page = processes[pid].p_registers.reg_rsp - PAGESIZE;
+    uintptr_t pstack_page = page_alloc(pid); // Q3. virtual stack page
+    virtual_memory_map(p_pagetable, stack_page, pstack_page,
+                       PAGESIZE, PTE_P | PTE_W | PTE_U, pagetable_alloc);
+
+    // *** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***
+
     processes[pid].p_state = P_RUNNABLE;
 }
 
+// *** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***
 
 // assign_physical_page(addr, owner)
 //    Allocates the page with physical address `addr` to the given owner.
@@ -178,12 +254,6 @@ int assign_physical_page(uintptr_t addr, int8_t owner) {
     if ((addr & 0xFFF) != 0
         || addr >= MEMSIZE_PHYSICAL
         || pageinfo[PAGENUMBER(addr)].refcount != 0) {
-
-        log_printf("b1 : %d\n", (addr & 0xFFF) != 0);
-        log_printf("b2 : %d\n", addr >= MEMSIZE_PHYSICAL);
-        log_printf("b3 : %d\n", pageinfo[PAGENUMBER(addr)].refcount != 0);
-
-        
         return -1;
     } else {
         pageinfo[PAGENUMBER(addr)].refcount = 1;
@@ -213,15 +283,15 @@ void exception(x86_64_registers* reg) {
 
     // It can be useful to log events using `log_printf`.
     // Events logged this way are stored in the host's `log.txt` file.
-    //log_printf("proc %d: exception %d\n", current->p_pid, reg->reg_intno);
+    /*log_printf("proc %d: exception %d\n", current->p_pid, reg->reg_intno);*/
 
     // Show the current cursor location and memory state
     // (unless this is a kernel fault).
     console_show_cursor(cursorpos);
     if (reg->reg_intno != INT_PAGEFAULT || (reg->reg_err & PFERR_USER)) {
         check_virtual_memory();
-        //memshow_physical();
-        //memshow_virtual_animate();
+        memshow_physical();
+        memshow_virtual_animate();
     }
 
     // If Control-C was typed, exit the virtual machine.
@@ -232,26 +302,19 @@ void exception(x86_64_registers* reg) {
     switch (reg->reg_intno) {
 
     case INT_SYS_PANIC:
-        log_printf("proc %d: exception INT_SYS_PANIC (%d)\n", current->p_pid, reg->reg_intno);
-
         panic(NULL);
         break;                  // will not be reached
 
     case INT_SYS_GETPID:
-        log_printf("proc %d: exception INT_SYS_GETPID (%d)\n", current->p_pid, reg->reg_intno);
-
         current->p_registers.reg_rax = current->p_pid;
         break;
 
     case INT_SYS_YIELD:
-        //log_printf("proc %d: exception INT_SYS_YIELD (%d)\n", current->p_pid, reg->reg_intno);
-
         schedule();
         break;                  /* will not be reached */
 
     case INT_SYS_PAGE_ALLOC: {
-        //log_printf("proc %d: exception INT_SYS_PAGE_ALLOC (%d)\n", current->p_pid, reg->reg_intno);
-
+	/*
         uintptr_t addr = current->p_registers.reg_rdi;
         int r = assign_physical_page(addr, current->p_pid);
         if (r >= 0) {
@@ -260,22 +323,29 @@ void exception(x86_64_registers* reg) {
         }
         current->p_registers.reg_rax = r;
         break;
+	*/
+
+	// *** Q3. virtual address spaces
+        uintptr_t vaddr = current->p_registers.reg_rdi;
+	uintptr_t paddr = page_alloc(current->p_pid);
+        if (paddr == (uintptr_t)NULL) {
+	    current->p_registers.reg_rax = -1;
+	    console_printf(CPOS(24, 0), 0x0C00, "Out of physical memory!");
+	} else {
+            virtual_memory_map(current->p_pagetable, vaddr, paddr,
+                               PAGESIZE, PTE_P | PTE_W | PTE_U, NULL);
+	    current->p_registers.reg_rax = vaddr;
+        }
+	// *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***
+        break;
     }
 
-    case INT_SYS_HELLO:
-        console_printf(CPOS(10, 10), 0xC000, "Hello, from Kernel");
-        break;
-
     case INT_TIMER:
-        //log_printf("proc %d: exception INT_TIMER (%d)\n", current->p_pid, reg->reg_intno);
-
         ++ticks;
         schedule();
         break;                  /* will not be reached */
 
     case INT_PAGEFAULT: {
-        log_printf("proc %d: exception INT_PAGEFAULT (%d)\n", current->p_pid, reg->reg_intno);
-
         // Analyze faulting address and access type.
         uintptr_t addr = rcr2();
         const char* operation = reg->reg_err & PFERR_WRITE
@@ -504,7 +574,7 @@ void memshow_physical(void) {
 
         // darker color for shared pages
         if (pageinfo[pn].refcount > 1) {
-	    color = 'S' | 0x0700;
+            color &= 0x77FF;
         }
 
         console[CPOS(1 + pn / 64, 12 + pn % 64)] = color;
@@ -581,13 +651,4 @@ void memshow_virtual_animate(void) {
         snprintf(s, 4, "%d ", showing);
         memshow_virtual(processes[showing].p_pagetable, s);
     }
-}
-
-
-
-int check_keyboard_buffer(void) {
-    int c = check_keyboard();
-    if (c != -1) 
-        log_printf("char %c\n", c);
-    return c;
 }

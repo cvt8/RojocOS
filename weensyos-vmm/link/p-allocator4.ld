@@ -8,7 +8,7 @@ PHDRS {
 }
 
 SECTIONS {
-    . = 0x1C0000;
+    . = 0x100000;
 
     /* Text segment: instructions and read-only globals */
     .text : {

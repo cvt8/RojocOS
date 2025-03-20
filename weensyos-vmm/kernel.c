@@ -90,7 +90,18 @@ void kernel(const char* command) {
 
     // nullptr is inaccessible even to the kernel
     virtual_memory_map(kernel_pagetable, (uintptr_t) 0, (uintptr_t) 0,
-		       PAGESIZE, PTE_P, NULL); // | PTE_W | PTE_U
+		       PAGESIZE, PTE_P, NULL); // | PTW_W | PTE_U
+
+    // *** Q1. Isolate kernel memory from user processes
+    virtual_memory_map(kernel_pagetable,
+		       (uintptr_t) PAGESIZE,
+		       (uintptr_t) PAGESIZE,
+		       0x00100000 - PAGESIZE, PTE_P | PTE_W, NULL);
+    virtual_memory_map(kernel_pagetable,
+		       (uintptr_t) console,
+		       (uintptr_t) console,
+		       PAGESIZE, PTE_P | PTE_W | PTE_U, NULL);
+
 
     // Set up process descriptors
     memset(processes, 0, sizeof(processes));
@@ -143,6 +154,18 @@ x86_64_pagetable* pagetable_alloc(void)
     return (x86_64_pagetable*)page_alloc(current->p_pid);
 }
 
+void copy_pagetable(x86_64_pagetable* dst_pt, x86_64_pagetable* src_pt, uintptr_t max)
+{
+    vamapping vm;
+
+    for (uintptr_t va = 0; va < max; va += PAGESIZE) {
+	vm = virtual_memory_lookup(src_pt, va);
+	if (vm.perm != 0)
+	    virtual_memory_map(dst_pt, va, vm.pa, PAGESIZE, vm.perm,
+			       pagetable_alloc);
+    }
+}
+
 // process_setup(pid, program_number)
 //    Load application program `program_number` as process number `pid`.
 //    This loads the application's code and data into memory, sets its
@@ -150,15 +173,38 @@ x86_64_pagetable* pagetable_alloc(void)
 
 void process_setup(pid_t pid, int program_number) {
     process_init(&processes[pid], 0);
-    processes[pid].p_pagetable = kernel_pagetable;
-    ++pageinfo[PAGENUMBER(kernel_pagetable)].refcount;
-    int r = program_load(&processes[pid], program_number, NULL);
+
+    current = &processes[pid];
+    x86_64_pagetable* p_pagetable = pagetable_alloc();
+    assert(p_pagetable != NULL);
+
+    extern char end[];
+    virtual_memory_map(p_pagetable,
+		       KERNEL_START_ADDR,
+		       KERNEL_START_ADDR,
+		       PAGEADDRESS(PAGENUMBER((uintptr_t)end) + 1)
+			    - KERNEL_START_ADDR,
+		       PTE_P | PTE_W, pagetable_alloc);
+    virtual_memory_map(p_pagetable,
+		       KERNEL_STACK_TOP - PAGESIZE,
+		       KERNEL_STACK_TOP - PAGESIZE,
+		       PAGESIZE,
+		       PTE_P | PTE_W, pagetable_alloc);
+    virtual_memory_map(p_pagetable,
+		       (uintptr_t) console,
+		       (uintptr_t) console,
+		       PAGESIZE, PTE_P | PTE_W | PTE_U, pagetable_alloc);
+
+    processes[pid].p_pagetable = p_pagetable;
+    int r = program_load(&processes[pid], program_number, pagetable_alloc);
     assert(r >= 0);
-    processes[pid].p_registers.reg_rsp = PROC_START_ADDR + PROC_SIZE * pid;
+
+    processes[pid].p_registers.reg_rsp = MEMSIZE_VIRTUAL;
     uintptr_t stack_page = processes[pid].p_registers.reg_rsp - PAGESIZE;
-    assign_physical_page(stack_page, pid);
-    virtual_memory_map(processes[pid].p_pagetable, stack_page, stack_page,
-                       PAGESIZE, PTE_P | PTE_W | PTE_U, NULL);
+    uintptr_t pstack_page = page_alloc(pid);
+    virtual_memory_map(p_pagetable, stack_page, pstack_page,
+                       PAGESIZE, PTE_P | PTE_W | PTE_U, pagetable_alloc);
+
     processes[pid].p_state = P_RUNNABLE;
 }
 
@@ -232,13 +278,18 @@ void exception(x86_64_registers* reg) {
         break;                  /* will not be reached */
 
     case INT_SYS_PAGE_ALLOC: {
-        uintptr_t addr = current->p_registers.reg_rdi;
-        int r = assign_physical_page(addr, current->p_pid);
-        if (r >= 0) {
-            virtual_memory_map(current->p_pagetable, addr, addr,
+        uintptr_t vaddr = current->p_registers.reg_rdi;
+        uintptr_t paddr = page_alloc(current->p_pid);
+        
+        if (paddr == (uintptr_t)NULL) {
+            current->p_registers.reg_rax = -1;
+            console_printf(CPOS(24, 0), 0x0C00, "Out of physical memory!");
+        } else {
+            virtual_memory_map(current->p_pagetable, vaddr, paddr,
                                PAGESIZE, PTE_P | PTE_W | PTE_U, NULL);
+            current->p_registers.reg_rax = vaddr;
         }
-        current->p_registers.reg_rax = r;
+        
         break;
     }
 

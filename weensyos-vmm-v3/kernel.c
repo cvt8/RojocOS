@@ -101,19 +101,23 @@ void kernel(const char* command) {
 
     if (command && strcmp(command, "fork") == 0) {
         log_printf("kernel(\"fork\")\n");
-        process_setup(1, 4);
+        process_setup(1, 1);
     } else if (command && strcmp(command, "forkexit") == 0) {
         log_printf("kernel(\"forkexit\")\n");
     
-        process_setup(1, 5);
+        process_setup(1, 2);
     } else {
         log_printf("kernel(\"default\")\n");
         for (pid_t i = 1; i <= 4; ++i) {
-            process_setup(i, i - 1);
+            process_setup(i, 0);
         }
 
-        process_setup(5, 6);
+        process_setup(5, 3);
     }
+
+    //process_setup(1, 1);
+    //process_setup(5, 3);
+
 
     // Switch to the first process using run()
     run(&processes[1]);
@@ -133,8 +137,7 @@ uintptr_t page_alloc(pageowner_t owner)
 
 	    memset((void*) PAGEADDRESS(pageno), 0, PAGESIZE);
 
-	    log_printf("proc %d: page_alloc = %d (%p)\n",
-			current->p_pid, pageno, PAGEADDRESS(pageno));
+	    //log_printf("proc %d: page_alloc = %d (%p)\n", current->p_pid, pageno, PAGEADDRESS(pageno));
 	    break;
 	}
 
@@ -156,15 +159,38 @@ x86_64_pagetable* pagetable_alloc(void)
 
 void process_setup(pid_t pid, int program_number) {
     process_init(&processes[pid], 0);
-    processes[pid].p_pagetable = kernel_pagetable;
-    ++pageinfo[PAGENUMBER(kernel_pagetable)].refcount;
-    int r = program_load(&processes[pid], program_number, NULL);
+
+    current = &processes[pid];
+    x86_64_pagetable* p_pagetable = pagetable_alloc();
+    assert(p_pagetable != NULL);
+
+    extern char end[];
+    virtual_memory_map(p_pagetable,
+		       KERNEL_START_ADDR,
+		       KERNEL_START_ADDR,
+		       PAGEADDRESS(PAGENUMBER((uintptr_t)end) + 1)
+			    - KERNEL_START_ADDR,
+		       PTE_P | PTE_W, pagetable_alloc);
+    virtual_memory_map(p_pagetable,
+		       KERNEL_STACK_TOP - PAGESIZE,
+		       KERNEL_STACK_TOP - PAGESIZE,
+		       PAGESIZE,
+		       PTE_P | PTE_W, pagetable_alloc);
+    virtual_memory_map(p_pagetable,
+		       (uintptr_t) console,
+		       (uintptr_t) console,
+		       PAGESIZE, PTE_P | PTE_W | PTE_U, pagetable_alloc);
+
+    processes[pid].p_pagetable = p_pagetable;
+    int r = program_load(&processes[pid], program_number, pagetable_alloc);
     assert(r >= 0);
-    processes[pid].p_registers.reg_rsp = PROC_START_ADDR + PROC_SIZE * pid;
+
+    processes[pid].p_registers.reg_rsp = MEMSIZE_VIRTUAL;
     uintptr_t stack_page = processes[pid].p_registers.reg_rsp - PAGESIZE;
-    assign_physical_page(stack_page, pid);
-    virtual_memory_map(processes[pid].p_pagetable, stack_page, stack_page,
-                       PAGESIZE, PTE_P | PTE_W | PTE_U, NULL);
+    uintptr_t pstack_page = page_alloc(pid);
+    virtual_memory_map(p_pagetable, stack_page, pstack_page,
+                       PAGESIZE, PTE_P | PTE_W | PTE_U, pagetable_alloc);
+
     processes[pid].p_state = P_RUNNABLE;
 }
 
@@ -193,6 +219,40 @@ int assign_physical_page(uintptr_t addr, int8_t owner) {
     }
 }
 
+#define STDIN_LENGTH 2024
+static int stdin_buffer[STDIN_LENGTH];
+static int stdin_next = 0;
+static int stdin_end = 0;
+
+
+void check_keyboard_push(void) {
+    int c = check_keyboard();
+
+    if (c != 0 && c != -1) {
+        log_printf("key %i pushed, char : %c\n", c, c);
+        stdin_buffer[stdin_end] = c;
+        stdin_end = (stdin_end + 1) % STDIN_LENGTH;
+        assert(stdin_next != stdin_end);
+    }
+}
+
+int check_keyboard_pop(void) {
+    int c = check_keyboard();
+
+    if (c !=0 && c == -1) {
+        if (stdin_next == stdin_end) {
+            return -1;
+        }
+
+        c = stdin_buffer[stdin_next];
+        stdin_next = (stdin_next + 1) % STDIN_LENGTH;
+    }
+
+    return c;
+}
+
+
+
 
 // exception(reg)
 //    Exception handler (for interrupts, traps, and faults).
@@ -220,12 +280,12 @@ void exception(x86_64_registers* reg) {
     console_show_cursor(cursorpos);
     if (reg->reg_intno != INT_PAGEFAULT || (reg->reg_err & PFERR_USER)) {
         check_virtual_memory();
-        //memshow_physical();
-        //memshow_virtual_animate();
+        memshow_physical();
+        memshow_virtual_animate();
     }
 
     // If Control-C was typed, exit the virtual machine.
-    check_keyboard();
+    check_keyboard_push();
 
 
     // Actually handle the exception.
@@ -250,21 +310,44 @@ void exception(x86_64_registers* reg) {
         break;                  /* will not be reached */
 
     case INT_SYS_PAGE_ALLOC: {
-        //log_printf("proc %d: exception INT_SYS_PAGE_ALLOC (%d)\n", current->p_pid, reg->reg_intno);
-
-        uintptr_t addr = current->p_registers.reg_rdi;
-        int r = assign_physical_page(addr, current->p_pid);
-        if (r >= 0) {
-            virtual_memory_map(current->p_pagetable, addr, addr,
-                               PAGESIZE, PTE_P | PTE_W | PTE_U, NULL);
+        uintptr_t vaddr = current->p_registers.reg_rdi;
+        uintptr_t paddr = page_alloc(current->p_pid);
+        
+        if (paddr == (uintptr_t)NULL) {
+            current->p_registers.reg_rax = -1;
+            console_printf(CPOS(24, 0), 0x0C00, "Out of physical memory!");
+        } else {
+            virtual_memory_map(current->p_pagetable, vaddr, paddr,
+                                PAGESIZE, PTE_P | PTE_W | PTE_U, NULL);
+            current->p_registers.reg_rax = vaddr;
         }
-        current->p_registers.reg_rax = r;
+        
         break;
     }
 
     case INT_SYS_HELLO:
         console_printf(CPOS(10, 10), 0xC000, "Hello, from Kernel");
         break;
+
+    case INT_SYS_READ:
+        current->p_registers.reg_rax = check_keyboard_pop();
+        break;
+
+    case INT_SYS_EXEC: {
+        // TODO: CHECK PERM
+
+        uintptr_t va = current->p_registers.reg_rdi;
+        vamapping vam = virtual_memory_lookup(current->p_pagetable, va);
+
+        char* path = (char*) vam.pa;
+
+        if (strcmp(path, "rand") == 0) {
+            log_printf("run rand\n");
+            process_setup(6, 4);
+        }
+
+        break;
+    }
 
     case INT_TIMER:
         //log_printf("proc %d: exception INT_TIMER (%d)\n", current->p_pid, reg->reg_intno);
@@ -291,6 +374,52 @@ void exception(x86_64_registers* reg) {
                        "Process %d page fault for %p (%s %s, rip=%p)!\n",
                        current->p_pid, addr, operation, problem, reg->reg_rip);
         current->p_state = P_BROKEN;
+        break;
+    }
+
+    case INT_SYS_FORK: {
+        // TODO: Better FORK
+        log_printf("proc %d: exception INT_SYS_FORK (%d)\n", current->p_pid, reg->reg_intno);
+
+        pid_t pid = 0;
+        for (pid_t i = 1; i < NPROC; i++) {
+            if (processes[i].p_state == P_FREE) {
+                pid = i;
+                break;
+            }
+        }
+
+        if (pid == 0) {
+            current->p_registers.reg_rax = -1;
+            break;
+        }
+
+        proc* p = &processes[pid];
+        x86_64_pagetable* p_pagetable = pagetable_alloc();
+        assert(p_pagetable != NULL);
+
+        for (uintptr_t va = 0; va < MEMSIZE_VIRTUAL; va += PAGESIZE) {
+            vamapping vam = virtual_memory_lookup(current->p_pagetable, va);
+
+            if (vam.pn == -1)
+                continue;
+
+            if (pageinfo[vam.pn].owner == pid) {
+                uintptr_t pa = page_alloc(pid);
+                assert(pa != (uintptr_t) NULL);
+                virtual_memory_map(p_pagetable, va, pa, PAGESIZE, vam.perm, pagetable_alloc);
+            } else {
+                virtual_memory_map(p_pagetable, va, vam.pa, PAGESIZE, vam.perm, pagetable_alloc);
+            }
+        }
+
+        p->p_pagetable = p_pagetable;
+        p->p_registers = current->p_registers;
+        p->p_registers.reg_rax = 0;
+        p->p_state = P_BLOCKED;
+
+        current->p_registers.reg_rax = pid;
+    
         break;
     }
 
@@ -322,7 +451,7 @@ void schedule(void) {
             run(&processes[pid]);
         }
         // If Control-C was typed, exit the virtual machine.
-        check_keyboard();
+        check_keyboard_push();
     }
 }
 
@@ -424,6 +553,13 @@ void check_page_table_ownership(x86_64_pagetable* pt, pid_t pid) {
 
 static void check_page_table_ownership_level(x86_64_pagetable* pt, int level,
                                              int owner, int refcount) {
+
+    /*log_printf("level : %d\n", level);
+    log_printf("owner : %d\n", owner);
+    log_printf("refcount : %d\n", refcount);
+    log_printf("pt owner : %d\n", pageinfo[PAGENUMBER(pt)].owner);*/
+
+
     assert(PAGENUMBER(pt) < NPAGES);
     assert(pageinfo[PAGENUMBER(pt)].owner == owner);
     assert(pageinfo[PAGENUMBER(pt)].refcount == refcount);
@@ -583,11 +719,3 @@ void memshow_virtual_animate(void) {
     }
 }
 
-
-
-int check_keyboard_buffer(void) {
-    int c = check_keyboard();
-    if (c != -1) 
-        log_printf("char %c\n", c);
-    return c;
-}
