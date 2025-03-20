@@ -39,6 +39,16 @@ void scan_line(char* dst) {
     }
 }
 
+void run(void) {
+    int pid = sys_fork();
+    assert (pid >= 0);
+
+    if (pid == 0) {
+        // child process
+        sys_exec("rand");
+    }
+}
+
 void process_main(void) {
     pid_t p = sys_getpid();
     srand(p);
@@ -60,7 +70,7 @@ void process_main(void) {
 
         if (strcmp(line, "run") == 0) {
             app_printf(p, "Running...\n");
-            sys_exec("rand");
+            run();
         }
 
         
