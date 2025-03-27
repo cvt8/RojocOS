@@ -14,16 +14,8 @@ entry_from_boot:
         movq $0x80000, %rsp
         movq %rsp, %rbp
         pushq $0
-        popfq
-        // Check for multiboot command line; if found pass it along.
-        cmpl $0x2BADB002, %eax
-        jne 1f
-        testl $4, (%rbx)
-        je 1f
-        movl 16(%rbx), %edi
-        jmp 2f
-1:      movq $0, %rdi
-2:      jmp kernel
+        popfq  // clear all the flags
+        jmp kernel
 
 
 # Interrupt handlers
@@ -125,6 +117,86 @@ sys63_int_handler:
         pushq $63
         jmp generic_exception_handler
 
+sys64_int_handler:
+        pushq $0
+        pushq $64
+        jmp generic_exception_handler
+
+sys65_int_handler:
+        pushq $0
+        pushq $65
+        jmp generic_exception_handler
+
+sys66_int_handler:
+        pushq $0
+        pushq $66
+        jmp generic_exception_handler
+
+sys67_int_handler:
+        pushq $0
+        pushq $66
+        jmp generic_exception_handler
+
+sys68_int_handler:
+        pushq $0
+        pushq $68
+        jmp generic_exception_handler
+
+sys69_int_handler:
+        pushq $0
+        pushq $9
+        jmp generic_exception_handler
+
+sys70_int_handler:
+        pushq $0
+        pushq $70
+        jmp generic_exception_handler
+
+sys71_int_handler:
+        pushq $0
+        pushq $71
+        jmp generic_exception_handler
+
+sys72_int_handler:
+        pushq $0
+        pushq $72
+        jmp generic_exception_handler
+
+sys73_int_handler:
+        pushq $0
+        pushq $73
+        jmp generic_exception_handler
+
+sys74_int_handler:
+        pushq $0
+        pushq $74
+        jmp generic_exception_handler
+
+sys75_int_handler:
+        pushq $0
+        pushq $75
+        jmp generic_exception_handler
+
+sys76_int_handler:
+        pushq $0
+        pushq $76
+        jmp generic_exception_handler
+
+sys77_int_handler:
+        pushq $0
+        pushq $77
+        jmp generic_exception_handler
+
+sys78_int_handler:
+        pushq $0
+        pushq $78
+        jmp generic_exception_handler
+
+sys79_int_handler:
+        pushq $0
+        pushq $79
+        jmp generic_exception_handler
+
         .globl default_int_handler
 default_int_handler:
         pushq $0
@@ -197,3 +269,19 @@ sys_int_handlers:
         .quad sys61_int_handler
         .quad sys62_int_handler
         .quad sys63_int_handler
+        .quad sys64_int_handler
+        .quad sys65_int_handler
+        .quad sys66_int_handler
+        .quad sys67_int_handler
+        .quad sys68_int_handler
+        .quad sys69_int_handler
+        .quad sys70_int_handler
+        .quad sys71_int_handler
+        .quad sys72_int_handler
+        .quad sys73_int_handler
+        .quad sys74_int_handler
+        .quad sys75_int_handler
+        .quad sys76_int_handler
+        .quad sys77_int_handler
+        .quad sys78_int_handler
+        .quad sys79_int_handler

@@ -129,7 +129,7 @@ void segments_init(void) {
     // System calls get special handling.
     // Note that the last argument is '3'.  This means that unprivileged
     // (level-3) applications may generate these interrupts.
-    for (unsigned i = INT_SYS; i < INT_SYS + 16; ++i) {
+    for (unsigned i = INT_SYS; i < INT_SYS + 32; ++i) {
         set_gate(&interrupt_descriptors[i], X86GATE_INTERRUPT, 3,
                  (uint64_t) sys_int_handlers[i - INT_SYS]);
     }
@@ -729,11 +729,10 @@ int error_printf(int cpos, int color, const char* format, ...) {
 
 int check_keyboard(void) {
     int c = keyboard_readc();
-    return c;
-    if (c == 'a' || c == 'f' || c == 'e') {
-        // Install a temporary page table to carry us through the
-        // process of reinitializing memory. This replicates work the
-        // bootloader does.
+
+    if (c == 0x03) { // Ctrl-C
+        poweroff(); 
+    } else if (c == 0x1b) { // ESC
         x86_64_pagetable* pt = (x86_64_pagetable*) 0x8000;
         memset(pt, 0, PAGESIZE * 3);
         pt[0].entry[0] = 0x9000 | PTE_P | PTE_W | PTE_U;
@@ -746,19 +745,13 @@ int check_keyboard(void) {
         uint32_t multiboot_info[5];
         multiboot_info[0] = 4;
         const char* argument = "fork";
-        if (c == 'a') {
-            argument = "allocator";
-        } else if (c == 'e') {
-            argument = "forkexit";
-        }
         uintptr_t argument_ptr = (uintptr_t) argument;
         assert(argument_ptr < 0x100000000L);
         multiboot_info[4] = (uint32_t) argument_ptr;
         asm volatile("movl $0x2BADB002, %%eax; jmp entry_from_boot"
                      : : "b" (multiboot_info) : "memory");
-    } else if (c == 0x03 || c == 'q') {
-        poweroff();
     }
+    
     return c;
 }
 
@@ -800,3 +793,113 @@ void panic(const char* format, ...) {
 void assert_fail(const char* file, int line, const char* msg) {
     panic("%s:%d: assertion '%s' failed\n", file, line, msg);
 }
+
+
+
+#define SECTORSIZE 512
+
+// waitdisk
+//    Wait for the disk to be ready.
+static void waitdisk(void) {
+    // Wait until the ATA status register says ready (0x40 is on)
+    // & not busy (0x80 is off)
+    while ((inb(0x1F7) & 0xC0) != 0x40) {
+        /* do nothing */
+    }
+}
+
+// readsect(dst, src_sect)
+//    Read disk sector number `src_sect` into address `dst`.
+static int readsect(uintptr_t dst, uint32_t src_sect) {
+    // programmed I/O for "read sector"
+    waitdisk();
+    outb(0x1F2, 1);             // send `count = 1` as an ATA argument
+    outb(0x1F3, src_sect);      // send `src_sect`, the sector number
+    outb(0x1F4, src_sect >> 8);
+    outb(0x1F5, src_sect >> 16);
+    outb(0x1F6, (src_sect >> 24) | 0xE0);
+    outb(0x1F7, 0x20);          // send the command: 0x20 = read sectors
+
+    waitdisk();
+
+    // Check status register (Hypothetical Fix)
+    uint8_t status = inb(0x1F7);
+    if (status & 0x01) { // ERR bit set
+        uint8_t error = inb(0x1F1); // Read error register for details
+        return -error; // Return error code (e.g., -4 for IDNF)
+    }
+
+    // then move the data into memory
+    insl(0x1F0, (void*) dst, SECTORSIZE/4); // read 128 words from the disk
+    return 0;
+}
+
+// readseg(dst, src_sect, filesz, memsz)
+//    Load an ELF segment at virtual address `dst` from the IDE disk's sector
+//    `src_sect`. Copies `filesz` bytes into memory at `dst` from sectors
+//    `src_sect` and up, then clears memory in the range
+//    `[dst+filesz, dst+memsz)`.
+void readseg(uintptr_t ptr, uint32_t src_sect,
+        size_t filesz, size_t memsz) {
+    uintptr_t end_ptr = ptr + filesz;
+    memsz += ptr;
+
+    // read sectors
+    for (; ptr < end_ptr; ptr += SECTORSIZE, ++src_sect) {
+        int r = readsect(ptr, src_sect);
+    }
+
+    // clear bss segment
+    for (; end_ptr < memsz; ++end_ptr) {
+    *(uint8_t*) end_ptr = 0;
+    }
+}
+
+
+#define DISKSIZE_MAX ((1UL << 32) * SECTORSIZE)
+
+
+int readdisk(uintptr_t ptr, uint64_t start, size_t size) {
+
+    if (size == 0) {
+        return 0;
+    }
+
+    if (start >= DISKSIZE_MAX || size >= DISKSIZE_MAX || start+size >= DISKSIZE_MAX) {
+        return -1;
+    }
+
+    // Read first sector
+
+    uint32_t src_sect = (uint32_t) (start / SECTORSIZE);
+    uint8_t buffer[SECTORSIZE];
+    int r = readsect((uintptr_t) buffer, src_sect);
+    if (r < 0) return r;
+
+    uint64_t count = MIN(SECTORSIZE-start%SECTORSIZE, size);
+    memcpy((void *) ptr, &buffer[start%SECTORSIZE], count);
+
+    src_sect += 1;
+
+    // Read other sectors
+
+    for (; count + SECTORSIZE <= size; count += SECTORSIZE, src_sect += 1) {
+        r = readsect(ptr+count, src_sect);
+        if (r < 0) return r;
+    }
+
+    // Read last sector
+
+    if (count == size) return 0;
+
+    r = readsect((uintptr_t) buffer, src_sect);
+    if (r < 0) return r;
+
+    memcpy((void *) (ptr+count), buffer, size-count);
+
+    return 0;
+}
+
+
+
+

@@ -31,6 +31,19 @@ CFLAGS := $(CFLAGS) \
 CFLAGS += $(shell $(CC) -fno-stack-protector -E -x c /dev/null >/dev/null 2>&1 && echo -fno-stack-protector)
 DEPCFLAGS = -MD -MF $(DEPSDIR)/$*.d -MP
 
+# c++ Compiler flags
+# -Os is required for the boot loader to fit within 512 bytes;
+# -ffreestanding means there is no standard library.
+CPP_CPPFLAGS := $(DEFS) -I. -nostdinc++
+CXXFLAGS := $(CPP_CPPFLAGS) \
+	-std=gnu++20 -m64 \
+	-mno-red-zone -mno-mmx -mno-sse -mno-sse2 -mno-sse3 -mno-3dnow \
+	-ffreestanding -fno-omit-frame-pointer \
+	-Wall -W -Wshadow -Wno-format -Wno-unused -Werror -gdwarf-2 -nostartfiles
+# Include -fno-stack-protector if the option exists.
+CXXFLAGS += $(shell $(CXX) -fno-stack-protector -E -x c /dev/null >/dev/null 2>&1 && echo -fno-stack-protector)
+DEPCXXFLAGS = -MD -MF $(DEPSDIR)/$*.d -MP
+
 # Linker flags
 LDFLAGS := $(LDFLAGS) -Os --gc-sections -z max-page-size=0x1000 -static -nostdlib
 LDFLAGS	+= $(shell $(LD) -m elf_x86_64 --help >/dev/null 2>&1 && echo -m elf_x86_64)

@@ -9,6 +9,27 @@ uint8_t* heap_top;
 uint8_t* stack_bottom;
 
 void process_main(void) {
+    // Fork a total of three new copies.
+    pid_t p1 = sys_fork();
+    assert(p1 >= 0);
+    pid_t p2 = sys_fork();
+    assert(p2 >= 0);
+
+    // Check fork return values: fork should return 0 to child.
+    if (sys_getpid() == 1) {
+        //assert(p1 != 0);
+        assert(p1 != 0 && p2 != 0 && p1 != p2);
+    } else {
+        //assert(p1 == 0);
+        assert(p1 == 0 || p2 == 0);
+    }
+
+    while (1) {
+        sys_yield();
+    }
+
+    // The rest of this code is like p-allocator.c.
+
     pid_t p = sys_getpid();
     srand(p);
 
@@ -30,12 +51,7 @@ void process_main(void) {
             }
             *heap_top = p;      /* check we have write access to new page */
             console[CPOS(24, 79)] = '0' + p;  /* check we can write to console */
-	    //*heap_top = *(uint8_t *)(0x80000 - 4); /* read kernel stack /!\ */
-
             heap_top += PAGESIZE;
-
-	    /* /!\ test page fault in process 2 */
-	    //if (p == 2) app_printf(p, "%d:%x\n", p, *heap_top);
         }
         sys_yield();
     }

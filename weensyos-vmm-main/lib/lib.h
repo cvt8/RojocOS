@@ -94,15 +94,34 @@ void panic(const char* format, ...) __attribute__((noinline, noreturn));
 // System call numbers: an application calls `int NUM` to call a system call
 
 #define INT_SYS                 48
-#define INT_SYS_PANIC           (INT_SYS + 0)
-#define INT_SYS_GETPID          (INT_SYS + 1)
-#define INT_SYS_YIELD           (INT_SYS + 2)
-#define INT_SYS_PAGE_ALLOC      (INT_SYS + 3)
-#define INT_SYS_FORK            (INT_SYS + 4)
-#define INT_SYS_EXIT            (INT_SYS + 5)
-#define INT_SYS_HELLO           (INT_SYS + 6)
-#define INT_SYS_READ            (INT_SYS + 7)
-#define INT_SYS_EXEC            (INT_SYS + 8)
+
+#define SYSCALL(n) (INT_SYS + n + 1)
+
+#define INT_SYS_READ            SYSCALL(0)
+#define INT_SYS_WRITE           SYSCALL(1)
+#define INT_SYS_OPEN            SYSCALL(2)
+#define INT_SYS_CLOSE           SYSCALL(3)
+#define INT_SYS_STAT            SYSCALL(4)
+#define INT_SYS_FSTAT           SYSCALL(5)
+#define INT_SYS_SCHED_YIELD     SYSCALL(11) // 24
+#define INT_SYS_GETPID          SYSCALL(12) // 39
+#define INT_SYS_FORK            SYSCALL(13) // 57
+#define INT_SYS_EXECV           SYSCALL(14) // 59
+#define INT_SYS_EXIT            SYSCALL(15) // 60
+#define INT_SYS_KILL            SYSCALL(16) // 62
+#define INT_SYS_GETCWD          SYSCALL(17) // 79
+#define INT_SYS_CHDIR           SYSCALL(18) // 80
+#define INT_SYS_MKDIR           SYSCALL(19) // 83
+
+
+#define INT_SYS_HELLO           SYSCALL(6)
+#define INT_SYS_FORGET          SYSCALL(7)
+#define INT_SYS_WAIT            SYSCALL(8)
+#define INT_SYS_PANIC           SYSCALL(-1)
+#define INT_SYS_KEYBORD         SYSCALL(9)
+#define INT_SYS_PAGE_ALLOC      SYSCALL(10)
+
+
 
 
 // Console printing
@@ -156,5 +175,8 @@ struct printer {
 };
 
 void printer_vprintf(printer* p, int color, const char* format, va_list val);
+
+
+int string_to_char(const char *str, int *dest);
 
 #endif /* !WEENSYOS_LIB_H */

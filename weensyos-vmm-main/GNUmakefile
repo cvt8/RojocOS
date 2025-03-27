@@ -5,15 +5,17 @@ all: $(IMAGE)
 # actual shell commands run by Make), as well as the "overview" commands
 # (such as '+ cc lib/readline.c').
 #
-# For overview commands only, run 'make all'.
+# For overview commands only, run f'make all'.
 # For overview and verbose commands, run 'make V=1 all'.
 V = 0
 ifeq ($(V),1)
 compile = $(CC) $(CPPFLAGS) $(CFLAGS) $(DEPCFLAGS) $(1)
+cpp_compile = $(CXX) $(CPP_CPPFLAGS) $(CXXFLAGS) $(DEPCXXFLAGS) $(1)
 link = $(LD) $(LDFLAGS) $(1)
 run = $(1) $(3)
 else
 compile = @/bin/echo " " $(2) $< && $(CC) $(CPPFLAGS) $(CFLAGS) $(DEPCFLAGS) $(1)
+cpp_compile = @/bin/echo " " $(2) $< && $(CXX) $(CPP_CPPFLAGS) $(CXXFLAGS) $(DEPCXXFLAGS) $(1)
 link = @/bin/echo " " $(2) $(patsubst %.full,%,$@) && $(LD) $(LDFLAGS) $(1)
 run = @$(if $(2),/bin/echo " " $(2) $(3) &&,) $(1) $(3)
 endif
@@ -43,32 +45,47 @@ endif
 
 BOOT_OBJS = $(OBJDIR)/bootentry.o $(OBJDIR)/boot.o
 
-KERNEL_OBJS = $(OBJDIR)/k-exception.o $(OBJDIR)/kernel.o \
-	$(OBJDIR)/k-hardware.o $(OBJDIR)/k-loader.o $(OBJDIR)/lib.o
+KERNEL_C_OBJS = $(OBJDIR)/kernel.o $(OBJDIR)/k-hardware.o $(OBJDIR)/k-loader.o
+KERNEL_OBJS = $(OBJDIR)/k-exception.o $(KERNEL_C_OBJS) $(OBJDIR)/lib.o $(OBJDIR)/fs.o
 KERNEL_LINKER_FILES = link/kernel.ld link/shared.ld
 
-PROCESS_BINARIES = $(OBJDIR)/p-allocator $(OBJDIR)/p-fork $(OBJDIR)/p-forkexit \
-	$(OBJDIR)/p-hello $(OBJDIR)/p-rand
-PROCESS_LIB_OBJS = $(OBJDIR)/lib.o $(OBJDIR)/process.o
+PROCESS_BINARIES = $(OBJDIR)/p-allocator $(OBJDIR)/p-fork \
+	$(OBJDIR)/p-hello $(OBJDIR)/p-rand $(OBJDIR)/p-echo $(OBJDIR)/p-ls $(OBJDIR)/p-mkdir
+PROCESS_LIB_OBJS = $(OBJDIR)/lib.o $(OBJDIR)/process.o $(OBJDIR)/lib-malloc.o
 ALLOCATOR_OBJS = $(OBJDIR)/p-allocator.o $(PROCESS_LIB_OBJS)
-PROCESS_OBJS = $(OBJDIR)/p-allocator.o $(OBJDIR)/p-fork.o \
-	$(OBJDIR)/p-forkexit.o $(OBJDIR)/p-hello.o $(OBJDIR)/p-rand.o $(PROCESS_LIB_OBJS)
+
+PROCESS_SRC_C_OBJS = $(OBJDIR)/p-allocator.o $(OBJDIR)/p-fork.o \
+	$(OBJDIR)/p-hello.o $(OBJDIR)/p-rand.o $(OBJDIR)/p-echo.o $(OBJDIR)/p-mkdir.o
+PROCESS_SRC_CPP_OBJS = $(OBJDIR)/p-ls.o
+PROCESS_OBJS = $(PROCESS_SRC_C_OBJS) $(PROCESS_SRC_CPP_OBJS) $(PROCESS_LIB_OBJS)
 PROCESS_LINKER_FILES = link/process.ld link/shared.ld
 
 
 # Generic rules for making object files
 
-$(PROCESS_OBJS): $(OBJDIR)/%.o: %.c $(BUILDSTAMPS)
-	$(call compile,-O1 -DWEENSYOS_PROCESS -c $< -o $@,COMPILE)
+$(OBJDIR)/lib.o $(OBJDIR)/fs.o: $(OBJDIR)/%.o: lib/%.c $(BUILDSTAMPS)
+	$(call compile,-c $< -o $@,COMPILE)
 
-$(OBJDIR)/%.o: %.c $(BUILDSTAMPS)
-	$(call compile,-DWEENSYOS_KERNEL -c $< -o $@,COMPILE)
-
-$(OBJDIR)/boot.o: $(OBJDIR)/%.o: boot.c $(BUILDSTAMPS)
-	$(call compile,-Os -fomit-frame-pointer -fno-inline -c $< -o $@,COMPILE)
-
-$(OBJDIR)/%.o: %.S $(BUILDSTAMPS)
+$(OBJDIR)/bootentry.o: $(OBJDIR)/%.o: boot/%.S $(BUILDSTAMPS)
 	$(call compile,-c $< -o $@,ASSEMBLE)
+
+$(OBJDIR)/boot.o: $(OBJDIR)/%.o: boot/%.c $(BUILDSTAMPS)
+	$(call compile,-Ielf -Ilib -Os -fomit-frame-pointer -fno-inline -c $< -o $@,COMPILE)
+
+$(OBJDIR)/k-exception.o: $(OBJDIR)/%.o: kernel/%.S $(BUILDSTAMPS)
+	$(call compile,-c $< -o $@,ASSEMBLE)
+
+$(KERNEL_C_OBJS): $(OBJDIR)/%.o: kernel/%.c $(BUILDSTAMPS)
+	$(call compile,-Ielf -Ilib -DWEENSYOS_KERNEL -c $< -o $@,COMPILE)
+
+$(PROCESS_SRC_C_OBJS): $(OBJDIR)/%.o: processes/%.c $(BUILDSTAMPS)
+	$(call compile,-Ilib -O1 -DWEENSYOS_PROCESS -c $< -o $@,COMPILE)
+
+$(PROCESS_SRC_CPP_OBJS): $(OBJDIR)/%.o: processes/%.cpp $(BUILDSTAMPS)
+	$(call cpp_compile,-Ilib -O1 -DWEENSYOS_PROCESS -c $< -o $@,COMPILE)
+
+$(OBJDIR)/process.o $(OBJDIR)/lib-malloc.o: $(OBJDIR)/%.o: lib/%.c $(BUILDSTAMPS)
+	$(call compile,-O1 -DWEENSYOS_PROCESS -c $< -o $@,COMPILE)
 
 
 # Specific rules for WeensyOS
@@ -93,8 +110,8 @@ $(OBJDIR)/bootsector: $(BOOT_OBJS) link/boot.ld link/shared.ld
 $(OBJDIR)/mkbootdisk: build/mkbootdisk.c $(BUILDSTAMPS)
 	$(call run,$(HOSTCC) -I. -o $(OBJDIR)/mkbootdisk,HOSTCOMPILE,build/mkbootdisk.c)
 
-weensyos.img: $(OBJDIR)/mkbootdisk $(OBJDIR)/bootsector $(OBJDIR)/kernel
-	$(call run,$(OBJDIR)/mkbootdisk $(OBJDIR)/bootsector $(OBJDIR)/kernel > $@,CREATE $@)
+weensyos.img: $(OBJDIR)/mkbootdisk $(OBJDIR)/bootsector $(OBJDIR)/kernel data.txt
+	$(call run,$(OBJDIR)/mkbootdisk $(OBJDIR)/bootsector $(OBJDIR)/kernel @1024 data.txt > $@,CREATE $@)
 
 
 run-%: run-qemu-%

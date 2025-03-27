@@ -30,13 +30,11 @@ off_t maxoff = 0;
 off_t curoff = 0;
 
 int find_partition(off_t partition_sect, off_t extended_sect, int partoff);
-void do_multiboot(const char *filename);
 
 
 void usage(void) {
     fprintf(stderr, "Usage: mkbootdisk BOOTSECTORFILE [FILE | @SECNUM]...\n");
     fprintf(stderr, "   or: mkbootdisk -p DISK [FILE | @SECNUM]...\n");
-    fprintf(stderr, "   or: mkbootdisk -m KERNELFILE\n");
     exit(1);
 }
 
@@ -104,14 +102,6 @@ int main(int argc, char *argv[]) {
         argc -= 2;
         argv += 2;
         bootsector_special = 0;
-    }
-
-    // Check for multiboot option
-    if (argc >= 2 && strcmp(argv[1], "-m") == 0) {
-        if (argc < 3) {
-            usage();
-        }
-        do_multiboot(argv[2]);
     }
 
     // Read files
@@ -281,37 +271,4 @@ int find_partition(off_t partition_sect, off_t extended_sect, int partoff) {
 
     // no partition number found
     return 0;
-}
-
-
-const uint32_t multiboot_header[3] = { 0x1BADB002, 0, -0x1BADB002 };
-
-void do_multiboot(const char *filename) {
-    uint8_t buf[SECTORSIZE];
-    elf_header *elfh = (elf_header *) buf;
-    off_t o;
-
-    if ((diskfd = open(filename, O_RDWR)) < 0) {
-        fprintf(stderr, "%s: %s\n", filename, strerror(errno));
-        usage();
-    }
-
-    readsect(buf, 0);
-
-    if (elfh->e_magic != ELF_MAGIC) {
-        fprintf(stderr, "%s: not an ELF executable file\n", filename);
-        usage();
-    }
-
-    o = elfh->e_phoff + sizeof(elf_program) * elfh->e_phnum;
-    if (o >= 4096 - sizeof(multiboot_header)) {
-        fprintf(stderr, "%s: ELF header too large to accommodate multiboot header\n", filename);
-        usage();
-    } else if (lseek(diskfd, o, SEEK_SET) != o) {
-        perror("lseek");
-        usage();
-    }
-
-    diskwrite(multiboot_header, sizeof(multiboot_header));
-    exit(0);
 }

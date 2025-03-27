@@ -68,7 +68,7 @@ static void boot_readseg(uintptr_t ptr, uint32_t src_sect,
     memsz += ptr;
 
     // round down to sector boundary
-    ptr &= ~(SECTORSIZE - 1);
+    ptr &= ~(SECTORSIZE - 1); //TODO: WHY ???
 
     // read sectors
     for (; ptr < end_ptr; ptr += SECTORSIZE, ++src_sect) {

@@ -21,8 +21,13 @@ typedef enum procstate {
 // Process descriptor type
 typedef struct proc {
     pid_t p_pid;                        // process ID
+    pid_t p_parent;
     x86_64_registers p_registers;       // process's current registers
     procstate_t p_state;                // process state (see above)
+    pid_t p_wait_pid;
+    int* p_wait_exit_code;
+    int p_exit_code;
+    char p_cwd[256];
     x86_64_pagetable* p_pagetable;      // process's page table
 } proc;
 
@@ -202,5 +207,13 @@ int error_printf(int cpos, int color, const char* format, ...)
     __attribute__((noinline));
 int error_vprintf(int cpos, int color, const char* format, va_list val)
     __attribute__((noinline));
+
+
+
+void readseg(uintptr_t ptr, uint32_t src_sect,
+        size_t filesz, size_t memsz);
+
+
+int readdisk(uintptr_t ptr, uint64_t start, uint64_t size);
 
 #endif
