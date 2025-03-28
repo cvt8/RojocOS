@@ -600,6 +600,7 @@ static const struct keyboard_key {
     /*CKEY(20)*/ {{'.', '>', 0, 0}},  /*CKEY(21)*/ {{'/', '?', 0, 0}}
 };
 
+// cette fonction renvoie -1 quand il n'y a pas d'input clavier, et le  code ASCII du charactère en input sinon
 int keyboard_readc(void) {
     static uint8_t modifiers;
     static uint8_t last_escape;
@@ -722,10 +723,11 @@ int error_printf(int cpos, int color, const char* format, ...) {
 
 
 // check_keyboard
-//    Check for the user typing a control key. 'a', 'f', and 'e' cause a soft
-//    reboot where the kernel runs the allocator programs, "fork", or
-//    "forkexit", respectively. Control-C or 'q' exit the virtual machine.
-//    Returns key typed or -1 for no key.
+// 
+// Control-C exits the virtual machine.
+//  echap redémarre
+// characters below 0 are false characters -> we don't care about them; the rest we do care about 
+// Returns key typed or -1 for no key.
 
 int check_keyboard(void) {
     int c = keyboard_readc();
@@ -742,14 +744,14 @@ int check_keyboard(void) {
         // The soft reboot process doesn't modify memory, so it's
         // safe to pass `multiboot_info` on the kernel stack, even
         // though it will get overwritten as the kernel runs.
-        uint32_t multiboot_info[5];
-        multiboot_info[0] = 4;
-        const char* argument = "fork";
-        uintptr_t argument_ptr = (uintptr_t) argument;
-        assert(argument_ptr < 0x100000000L);
-        multiboot_info[4] = (uint32_t) argument_ptr;
-        asm volatile("movl $0x2BADB002, %%eax; jmp entry_from_boot"
-                     : : "b" (multiboot_info) : "memory");
+        // uint32_t multiboot_info[5];
+        // multiboot_info[0] = 4;
+        // const char* argument = "fork";
+        // uintptr_t argument_ptr = (uintptr_t) argument;
+        // assert(argument_ptr < 0x100000000L);
+        // multiboot_info[4] = (uint32_t) argument_ptr;
+        // asm volatile("movl $0x2BADB002, %%eax; jmp entry_from_boot"
+        //              : : "b" (multiboot_info) : "memory");
     }
     
     return c;
