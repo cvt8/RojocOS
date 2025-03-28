@@ -108,6 +108,7 @@ void kernel(void) {
 
     // Init filesystem
 
+
     fs_init(&fsdesc, fs_read_disk);
 
     // Set up process descriptors
@@ -118,10 +119,9 @@ void kernel(void) {
     }
 
     //process_setup(6, 0); // p-allocator
-    process_setup(5, 2, 0); // hello
+    // process_setup(5, 2, 0); // hello
     process_setup(1, 1, 0); // fork
 
-    // Switch to the first process using run()
     run(&processes[1]);
 }
 
@@ -246,7 +246,7 @@ static int stdin_buffer[STDIN_LENGTH];
 static int stdin_next = 0;
 static int stdin_end = 0;
 
-
+// returns nothing; if there is a keyboard input, puts it into the buffer.
 void check_keyboard_push(void) {
     int c = check_keyboard();
 
@@ -258,6 +258,7 @@ void check_keyboard_push(void) {
     }
 }
 
+// returns -1 if there is not innput character; else returns the character (similar to the other function check_keyboard_push right above; except there is a buffer with push now)
 int check_keyboard_pop(void) {
     int c = check_keyboard();
 
