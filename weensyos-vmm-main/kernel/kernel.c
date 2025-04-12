@@ -119,7 +119,7 @@ void kernel(void) {
     }
 
     //process_setup(6, 0); // p-allocator
-    // process_setup(5, 2, 0); // hello
+    process_setup(5, 2, 0); // hello
     process_setup(1, 1, 0); // fork
 
     run(&processes[1]);
@@ -404,6 +404,14 @@ void exception(x86_64_registers* reg) {
         }
         if (strcmp(path, "hide") == 0) {
             memshow_enabled = 0;
+            console_clear();
+
+            current->p_exit_code = 0;
+            process_kill(current->p_pid);
+            break;
+        }
+        if (strcmp(path, "clear") == 0) {
+            console_clear();
             current->p_exit_code = 0;
             process_kill(current->p_pid);
             break;
