@@ -1,6 +1,7 @@
 #include "fs.h"
 #include "kernel.h"
 #include "lib.h"
+#include "k-malloc.h"
 
 // kernel.c
 //
@@ -412,6 +413,20 @@ void exception(x86_64_registers* reg) {
         }
         if (strcmp(path, "clear") == 0) {
             console_clear();
+            current->p_exit_code = 0;
+            process_kill(current->p_pid);
+            break;
+        }
+        if (strcmp(path, "testmalloc") == 0) {
+            va = current->p_registers.reg_rsi;
+            vam = virtual_memory_lookup(current->p_pagetable, va);
+            char** argv = (char**) vam.pa;
+
+            vam = virtual_memory_lookup(current->p_pagetable, (uintptr_t) argv[1]);
+            char *arg = (char*) vam.pa;
+
+            testmalloc(arg);
+            
             current->p_exit_code = 0;
             process_kill(current->p_pid);
             break;

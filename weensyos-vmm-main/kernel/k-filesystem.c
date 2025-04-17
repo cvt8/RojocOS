@@ -12,5 +12,5 @@ int get_inode(inode_list ilst, int fd) {
 
 int add_entry(inode_list ilst, int inode) {
     int fd = 0;
-
+    return 0;
 }

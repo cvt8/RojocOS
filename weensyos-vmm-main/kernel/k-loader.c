@@ -13,8 +13,8 @@ extern uint8_t _binary_obj_p_allocator_start[];
 extern uint8_t _binary_obj_p_allocator_end[];
 extern uint8_t _binary_obj_p_fork_start[];
 extern uint8_t _binary_obj_p_fork_end[];
-extern uint8_t _binary_obj_p_hello_start[];
-extern uint8_t _binary_obj_p_hello_end[];
+extern uint8_t _binary_obj_p_shell_start[];
+extern uint8_t _binary_obj_p_shell_end[];
 extern uint8_t _binary_obj_p_cat_start[];
 extern uint8_t _binary_obj_p_cat_end[];
 extern uint8_t _binary_obj_p_echo_start[];
@@ -32,7 +32,7 @@ struct ramimage {
 } ramimages[] = {
     { _binary_obj_p_allocator_start, _binary_obj_p_allocator_end },
     { _binary_obj_p_fork_start, _binary_obj_p_fork_end },
-    { _binary_obj_p_hello_start, _binary_obj_p_hello_end },
+    { _binary_obj_p_shell_start, _binary_obj_p_shell_end },
     { _binary_obj_p_cat_start, _binary_obj_p_cat_end },
     { _binary_obj_p_echo_start, _binary_obj_p_echo_end },
     { _binary_obj_p_ls_start, _binary_obj_p_ls_end },
