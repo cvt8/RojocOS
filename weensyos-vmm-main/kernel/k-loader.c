@@ -15,14 +15,16 @@ extern uint8_t _binary_obj_p_fork_start[];
 extern uint8_t _binary_obj_p_fork_end[];
 extern uint8_t _binary_obj_p_hello_start[];
 extern uint8_t _binary_obj_p_hello_end[];
-extern uint8_t _binary_obj_p_rand_start[];
-extern uint8_t _binary_obj_p_rand_end[];
+extern uint8_t _binary_obj_p_cat_start[];
+extern uint8_t _binary_obj_p_cat_end[];
 extern uint8_t _binary_obj_p_echo_start[];
 extern uint8_t _binary_obj_p_echo_end[];
 extern uint8_t _binary_obj_p_ls_start[];
 extern uint8_t _binary_obj_p_ls_end[];
 extern uint8_t _binary_obj_p_mkdir_start[];
 extern uint8_t _binary_obj_p_mkdir_end[];
+extern uint8_t _binary_obj_p_rand_start[];
+extern uint8_t _binary_obj_p_rand_end[];
 
 struct ramimage {
     void* begin;
@@ -31,10 +33,11 @@ struct ramimage {
     { _binary_obj_p_allocator_start, _binary_obj_p_allocator_end },
     { _binary_obj_p_fork_start, _binary_obj_p_fork_end },
     { _binary_obj_p_hello_start, _binary_obj_p_hello_end },
-    { _binary_obj_p_rand_start, _binary_obj_p_rand_end },
+    { _binary_obj_p_cat_start, _binary_obj_p_cat_end },
     { _binary_obj_p_echo_start, _binary_obj_p_echo_end },
     { _binary_obj_p_ls_start, _binary_obj_p_ls_end },
-    { _binary_obj_p_mkdir_start, _binary_obj_p_mkdir_end }
+    { _binary_obj_p_mkdir_start, _binary_obj_p_mkdir_end },
+    { _binary_obj_p_rand_start, _binary_obj_p_rand_end }
 };
 
 static int program_load_segment(proc* p, const elf_program* ph,

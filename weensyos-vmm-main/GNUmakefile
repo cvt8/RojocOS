@@ -50,12 +50,12 @@ KERNEL_OBJS = $(OBJDIR)/k-exception.o $(KERNEL_C_OBJS) $(OBJDIR)/lib.o $(OBJDIR)
 KERNEL_LINKER_FILES = link/kernel.ld link/shared.ld
 
 PROCESS_BINARIES = $(OBJDIR)/p-allocator $(OBJDIR)/p-fork \
-	$(OBJDIR)/p-hello $(OBJDIR)/p-rand $(OBJDIR)/p-echo $(OBJDIR)/p-ls $(OBJDIR)/p-mkdir
+	$(OBJDIR)/p-hello $(OBJDIR)/p-cat $(OBJDIR)/p-echo $(OBJDIR)/p-ls $(OBJDIR)/p-mkdir $(OBJDIR)/p-rand 
 PROCESS_LIB_OBJS = $(OBJDIR)/lib.o $(OBJDIR)/process.o $(OBJDIR)/lib-malloc.o
 ALLOCATOR_OBJS = $(OBJDIR)/p-allocator.o $(PROCESS_LIB_OBJS)
 
 PROCESS_SRC_C_OBJS = $(OBJDIR)/p-allocator.o $(OBJDIR)/p-fork.o \
-	$(OBJDIR)/p-hello.o $(OBJDIR)/p-rand.o $(OBJDIR)/p-echo.o $(OBJDIR)/p-mkdir.o
+	$(OBJDIR)/p-hello.o $(OBJDIR)/p-cat.o $(OBJDIR)/p-echo.o $(OBJDIR)/p-mkdir.o $(OBJDIR)/p-rand.o
 PROCESS_SRC_CPP_OBJS = $(OBJDIR)/p-ls.o
 PROCESS_OBJS = $(PROCESS_SRC_C_OBJS) $(PROCESS_SRC_CPP_OBJS) $(PROCESS_LIB_OBJS)
 PROCESS_LINKER_FILES = link/process.ld link/shared.ld

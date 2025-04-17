@@ -433,6 +433,9 @@ void exception(x86_64_registers* reg) {
         } else if (strcmp(path, "mkdir") == 0) {
             log_printf("run mkdir\n");
             program_number = 6;
+        } else if (strcmp(path, "rand") == 0) {
+            log_printf("run rand\n");
+            program_number = 7;
         } else {
             log_printf("command not found : %s\n", path);
             current->p_registers.reg_rax = -1;
