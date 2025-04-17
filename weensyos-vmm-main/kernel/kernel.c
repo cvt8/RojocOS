@@ -61,12 +61,6 @@ typedef struct physical_pageinfo {
 
 static physical_pageinfo pageinfo[PAGENUMBER(MEMSIZE_PHYSICAL)];
 
-typedef enum pageowner {
-    PO_FREE = 0,                // this page is free
-    PO_RESERVED = -1,           // this page is reserved memory
-    PO_KERNEL = -2              // this page is used by the kernel
-} pageowner_t;
-
 static void pageinfo_init(void);
 
 
@@ -422,10 +416,13 @@ void exception(x86_64_registers* reg) {
             vam = virtual_memory_lookup(current->p_pagetable, va);
             char** argv = (char**) vam.pa;
 
-            vam = virtual_memory_lookup(current->p_pagetable, (uintptr_t) argv[1]);
-            char *arg = (char*) vam.pa;
-
-            testmalloc(arg);
+            if (argv[1]) {
+                vam = virtual_memory_lookup(current->p_pagetable, (uintptr_t) argv[1]);
+                char *arg = (char*) vam.pa;
+                testmalloc(arg);
+            } else {
+                testmalloc(NULL);
+            }
             
             current->p_exit_code = 0;
             process_kill(current->p_pid);
@@ -899,6 +896,7 @@ void check_virtual_memory(void) {
 //    Draw a picture of physical memory on the CGA console.
 
 static const uint16_t memstate_colors[] = {
+    'H' | 0x0D00,
     'K' | 0x0D00, 'R' | 0x0700, '.' | 0x0700, '1' | 0x0C00,
     '2' | 0x0A00, '3' | 0x0900, '4' | 0x0E00, '5' | 0x0F00,
     '6' | 0x0C00, '7' | 0x0A00, '8' | 0x0900, '9' | 0x0E00,
@@ -917,7 +915,7 @@ void memshow_physical(void) {
         if (pageinfo[pn].refcount == 0) {
             owner = PO_FREE;
         }
-        uint16_t color = memstate_colors[owner - PO_KERNEL];
+        uint16_t color = memstate_colors[owner - PO_KERNEL_HEAP];
 
 	if (pn == PAGENUMBER(console)) {
 	    color = 'C' | 0x0700;
@@ -955,7 +953,7 @@ void memshow_virtual(x86_64_pagetable* pagetable, const char* name) {
 	    if (vam.pn == PAGENUMBER(console)) {
 		color = 'C' | 0x0700;
 	    } else {
-		color = memstate_colors[owner - PO_KERNEL];
+		color = memstate_colors[owner - PO_KERNEL_HEAP];
 	    }
             // reverse video for user-accessible pages
             if (vam.perm & PTE_U) {
