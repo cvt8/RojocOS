@@ -824,7 +824,7 @@ static int readsect(uintptr_t dst, uint32_t src_sect) {
 
     waitdisk();
 
-    // Check status register (Hypothetical Fix)
+    //gi
     uint8_t status = inb(0x1F7);
     if (status & 0x01) { // ERR bit set
         uint8_t error = inb(0x1F1); // Read error register for details
@@ -836,11 +836,86 @@ static int readsect(uintptr_t dst, uint32_t src_sect) {
     return 0;
 }
 
+// writesect(src, dst_sect)
+//    Write data from address `src` to disk sector number `dst_sect`.
+// static int writesect(uintptr_t src, uint32_t dst_sect) {
+//     // Wait until disk is ready
+//     waitdisk();
+    
+//     // Send parameters to disk controller
+//     outb(0x1F2, 1);             // 1 sector to write
+//     outb(0x1F3, dst_sect);      // Lower bits of sector number
+//     outb(0x1F4, dst_sect >> 8);  // Middle bits
+//     outb(0x1F5, dst_sect >> 16); // Higher bits
+//     outb(0x1F6, (dst_sect >> 24) | 0xE0); // Highest bits + drive select
+//     outb(0x1F7, 0x30);          // Command 0x30: WRITE SECTORS
+    
+//     waitdisk();  // Wait for disk to be ready to accept data
+    
+//     // Write data (128 words = 512 bytes)
+//     outsl(0x1F0, (void*) src, SECTORSIZE/4);
+    
+//     // Wait for write to complete
+//     waitdisk();
+    
+//     // Check for errors
+//     uint8_t status = inb(0x1F7);
+//     if (status & 0x01) { // ERR bit set
+//         uint8_t error = inb(0x1F1);
+//         return -error;
+//     }
+    
+//     return 0;
+// }
+
+// AJOUT WRITE SECT ICI
+// ──────────────────────────────────────────────────────────────────────────────
+// writesect(src, dst_sect)
+//   Programmed‑I/O write of one 512‑byte sector to the primary ATA disk.
+//   Returns 0 on success, −E* (<0) on error.
+// ──────────────────────────────────────────────────────────────────────────────
+static int
+writesect(uintptr_t src, uint32_t dst_sect) {
+    waitdisk();                                     /* DRDY & !BSY             */
+
+    /* program the sector number and count */
+    outb(0x1F2, 1);                                 /* sector count            */
+    outb(0x1F3, dst_sect);                          /* LBA bits 0‑7            */
+    outb(0x1F4, dst_sect >>  8);                    /* LBA bits 8‑15           */
+    outb(0x1F5, dst_sect >> 16);                    /* LBA bits 16‑23          */
+    outb(0x1F6, (dst_sect >> 24) | 0xE0);           /* 0xE0 = LBA | master     */
+
+    outb(0x1F7, 0x30);                              /* 0x30 = WRITE SECTORS    */
+
+    /* wait for the controller to request data (DRQ=1, BSY=0)                */
+    while (true) {
+        uint8_t st = inb(0x1F7);
+        if (!(st & 0x80) && (st & 0x08)) break;     /* BSY==0 && DRQ==1        */
+    }
+
+    /* pump 512 bytes = 128 dwords */
+    outsl(0x1F0, (void*) src, SECTORSIZE / 4);
+
+    waitdisk();                                     /* ensure completion       */
+
+    uint8_t st = inb(0x1F7);
+    if (st & 0x01)                                  /* ERR bit */
+        return -inb(0x1F1);                         /* return the ATA error   */
+    return 0;
+}
+
+/* Largest address we can safely express as 32‑bit LBA */
+#define DISKSIZE_MAX   ((uint64_t)1 << 32) * SECTORSIZE
+
+// FIN AJOUT WRITE SECT ICI
+
+
 // readseg(dst, src_sect, filesz, memsz)
 //    Load an ELF segment at virtual address `dst` from the IDE disk's sector
 //    `src_sect`. Copies `filesz` bytes into memory at `dst` from sectors
 //    `src_sect` and up, then clears memory in the range
 //    `[dst+filesz, dst+memsz)`.
+
 void readseg(uintptr_t ptr, uint32_t src_sect,
         size_t filesz, size_t memsz) {
     uintptr_t end_ptr = ptr + filesz;
@@ -856,6 +931,131 @@ void readseg(uintptr_t ptr, uint32_t src_sect,
     *(uint8_t*) end_ptr = 0;
     }
 }
+
+
+// DEBUT AJOUT WRITEDISK ICI
+
+
+// ──────────────────────────────────────────────────────────────────────────────
+// writedisk(ptr, start, size)
+//   Writes an arbitrary byte range ‑ possibly unaligned ‑ to disk.
+//   Splits the job into three phases:
+//     1. Head partial sector  (if start is not 512‑B aligned)
+//     2. Full middle sectors
+//     3. Tail partial sector  (if size is not 512‑B aligned)
+// ──────────────────────────────────────────────────────────────────────────────
+int
+writedisk(uintptr_t ptr, uint64_t start, size_t size) {
+    if (size == 0)
+        return 0;
+
+    /* basic bounds checking */
+    if (start >= DISKSIZE_MAX ||
+        size  >= DISKSIZE_MAX ||
+        start + size > DISKSIZE_MAX)
+        return -1;
+
+    uint8_t tmp[SECTORSIZE];                       /* stack buffer, fits */
+
+    uint32_t dst_sect = start / SECTORSIZE;
+    size_t   offset   = start % SECTORSIZE;
+
+    /* ---------- phase 1: leading partial sector ---------- */
+    if (offset) {
+        int r = readsect((uintptr_t) tmp, dst_sect);
+        if (r < 0) return r;
+
+        size_t n = MIN(SECTORSIZE - offset, size);
+        memcpy(tmp + offset, (void*) ptr, n);
+
+        r = writesect((uintptr_t) tmp, dst_sect);
+        if (r < 0) return r;
+
+        ptr  += n;
+        size -= n;
+        dst_sect++;
+    }
+
+    /* ---------- phase 2: whole sectors ---------- */
+    while (size >= SECTORSIZE) {
+        int r = writesect(ptr, dst_sect);
+        if (r < 0) return r;
+
+        ptr       += SECTORSIZE;
+        size      -= SECTORSIZE;
+        dst_sect  += 1;
+    }
+
+    /* ---------- phase 3: trailing partial sector ---------- */
+    if (size > 0) {
+        int r = readsect((uintptr_t) tmp, dst_sect);
+        if (r < 0) return r;
+
+        memcpy(tmp, (void*) ptr, size);
+
+        r = writesect((uintptr_t) tmp, dst_sect);
+        if (r < 0) return r;
+    }
+    return 0;
+}
+
+// FIN AJOUT WRITEDISK ICI
+
+// int writedisk(uintptr_t ptr, uint64_t start, size_t size) {
+//     if (size == 0) {
+//         return 0;
+//     }
+
+//     if (start >= DISKSIZE_MAX || size >= DISKSIZE_MAX || start+size >= DISKSIZE_MAX) {
+//         return -1;
+//     }
+
+//     // Write first sector if start is not sector-aligned
+//     uint32_t dst_sect = (uint32_t) (start / SECTORSIZE);
+//     if (start % SECTORSIZE != 0) {
+//         uint8_t buffer[SECTORSIZE];
+        
+//         // Read the original sector first
+//         int r = readsect((uintptr_t) buffer, dst_sect);
+//         if (r < 0) return r;
+        
+//         // Modify the part we want to change
+//         uint64_t count = MIN(SECTORSIZE-start%SECTORSIZE, size);
+//         memcpy(&buffer[start%SECTORSIZE], (void *) ptr, count);
+        
+//         // Write the modified sector back
+//         r = writesect((uintptr_t) buffer, dst_sect);
+//         if (r < 0) return r;
+        
+//         ptr += count;
+//         size -= count;
+//         dst_sect += 1;
+//     }
+
+//     // Write complete sectors
+//     for (; size >= SECTORSIZE; size -= SECTORSIZE, ptr += SECTORSIZE, dst_sect += 1) {
+//         int r = writesect(ptr, dst_sect);
+//         if (r < 0) return r;
+//     }
+
+//     // Write last partial sector if needed
+//     if (size > 0) {
+//         uint8_t buffer[SECTORSIZE];
+        
+//         // Read the original sector
+//         int r = readsect((uintptr_t) buffer, dst_sect);
+//         if (r < 0) return r;
+        
+//         // Modify the beginning part of the buffer
+//         memcpy(buffer, (void *) ptr, size);
+        
+//         // Write the modified sector back
+//         r = writesect((uintptr_t) buffer, dst_sect);
+//         if (r < 0) return r;
+//     }
+
+//     return 0;
+// }
 
 
 #define DISKSIZE_MAX ((1UL << 32) * SECTORSIZE)

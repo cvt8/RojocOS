@@ -172,3 +172,108 @@ int fs_write(fs_descriptor *fsdesc, fs_ino ino, char *buf, size_t size, off_t of
         return r;
     }
 }
+
+// A vérifier
+
+struct fs_stat {
+    fs_ino st_ino; // Inode number
+    off_t st_size; // File size in bytes
+};
+
+int fs_getattr(fs_descriptor *fsdesc, const char *path, struct fs_stat *stbuf) {
+// Validate inputs
+if (fsdesc == NULL || path == NULL || stbuf == NULL) {
+    return -1;
+}
+
+// Initialize stbuf
+memset(stbuf, 0, sizeof(struct fs_stat));
+
+// Handle root directory or invalid paths
+if (path[0] == '\0' || strcmp(path, "/") == 0) {
+    return -1; // Root is a directory
+}
+
+// Assume path is a simple name like "fileN" where N is the inode number
+// Extract inode number from path (e.g., "file1" -> ino = 1)
+fs_ino ino = 0;
+if (strncmp(path, "file", 4) == 0 && path[4] >= '0' && path[4] <= '9') {
+    ino = atoi(path + 4);
+} else {
+    return -1; // Invalid path format
+}
+
+// Validate inode number
+if (ino >= fsdesc->metadata.inode_count) {
+    return -1; // Inode out of range
+}
+
+// Read inode entry
+uintptr_t entry_addr = METADATA_SIZE + ino * INODE_ENTRY_SIZE;
+struct fs_inode_entry entry;
+int r = fsdesc->fsdr(&entry, entry_addr, INODE_ENTRY_SIZE);
+if (r < 0) {
+    return r; // Disk read error
+}
+
+// Populate stbuf
+stbuf->st_ino = ino;
+stbuf->st_size = entry.block_count * BLOCK_SIZE;
+
+// Return inode number for files (block_count > 0), -1 for directories (block_count == 0)
+if (entry.block_count > 0) {
+    return ino; // File
+} else {
+    return -1; // Directory
+}
+}
+
+
+//TODO: coder l'arbre
+int fs_truncate(fs_descriptor *fsdesc, fs_ino ino, off_t size, struct fs_file_info *fi) {
+    // Validate inputs
+    if (fsdesc == NULL || size < 0) {
+        return -1;
+    }
+
+    // Read inode entry
+    uintptr_t entry_addr = METADATA_SIZE + ino * INODE_ENTRY_SIZE;
+    struct fs_inode_entry entry;
+
+    int r = fsdesc->fsdr(&entry, entry_addr, INODE_ENTRY_SIZE);
+    if (r < 0) {
+        return r; // Disk read error
+    }
+
+    // Calculate the number of blocks needed for the new size
+    int new_block_count = CEIL_DIV(size, BLOCK_SIZE);
+
+    // Check if we need to allocate new blocks
+    if (new_block_count > entry.block_count) {
+        int free_blocks = search_free_blocks(fsdesc, new_block_count - entry.block_count);
+        if (free_blocks < 0) {
+            return -1; // No free blocks available
+        }
+
+        // Update inode entry with new block count and start block
+        entry.start_block = free_blocks;
+        entry.block_count = new_block_count;
+
+        // Write updated inode entry back to disk
+        r = fsdesc->fsdw(&entry, entry_addr, INODE_ENTRY_SIZE);
+        if (r < 0) {
+            return r; // Disk write error
+        }
+    } else {
+        // If we are reducing the size, just update the block count
+        entry.block_count = new_block_count;
+
+        // Write updated inode entry back to disk
+        r = fsdesc->fsdw(&entry, entry_addr, INODE_ENTRY_SIZE);
+        if (r < 0) {
+            return r; // Disk write error
+        }
+    }
+
+    return 0; // Success
+}
