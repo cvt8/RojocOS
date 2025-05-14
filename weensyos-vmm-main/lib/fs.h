@@ -9,9 +9,9 @@ typedef int (*fs_disk_reader)(uintptr_t ptr, uint64_t start, size_t size);
 typedef int (*fs_disk_writer)(uintptr_t ptr, uint64_t start, size_t size);
 
 typedef struct fs_metadata {
-    uint64_t inode_count; /* data index */
-    uint64_t block_count;
-    uint64_t node_count; /* fs tree nodes */
+    uint32_t inode_count; /* data index */
+    uint32_t block_count;
+    uint32_t node_count; /* fs tree nodes */
 } fs_metadata;
 
 typedef struct fs_descriptor {
@@ -33,8 +33,8 @@ int fs_getattr(fs_descriptor *fsdesc, const char *path);
 
 int fs_truncate(fs_descriptor *fsdesc, fs_ino ino, off_t size);
 
-int fs_read(fs_descriptor *fsdesc, fs_ino ino, char *buf, size_t size, off_t offset);
+int fs_read(fs_descriptor *fsdesc, fs_ino ino, void *buf, size_t size, off_t offset);
 
-int fs_write(fs_descriptor *fsdesc, fs_ino ino, const char *buf, size_t size, off_t offset);
+int fs_write(fs_descriptor *fsdesc, fs_ino ino, void *buf, size_t size, off_t offset);
 
 #endif

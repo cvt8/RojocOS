@@ -45,7 +45,7 @@ endif
 
 BOOT_OBJS = $(OBJDIR)/bootentry.o $(OBJDIR)/boot.o
 
-KERNEL_C_OBJS = $(OBJDIR)/kernel.o $(OBJDIR)/k-hardware.o $(OBJDIR)/k-loader.o $(OBJDIR)/k-malloc.o $(OBJDIR)/k-filesystem.o $(OBJDIR)/entropy.o
+KERNEL_C_OBJS = $(OBJDIR)/kernel.o $(OBJDIR)/k-hardware.o $(OBJDIR)/k-loader.o $(OBJDIR)/k-malloc.o $(OBJDIR)/k-filesystem.o $(OBJDIR)/k-filedescriptor.o $(OBJDIR)/entropy.o
 KERNEL_OBJS = $(OBJDIR)/k-exception.o $(KERNEL_C_OBJS) $(OBJDIR)/lib.o $(OBJDIR)/fs.o
 KERNEL_LINKER_FILES = link/kernel.ld link/shared.ld
 

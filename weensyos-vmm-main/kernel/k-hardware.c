@@ -944,8 +944,7 @@ void readseg(uintptr_t ptr, uint32_t src_sect,
 //     2. Full middle sectors
 //     3. Tail partial sector  (if size is not 512‑B aligned)
 // ──────────────────────────────────────────────────────────────────────────────
-int
-writedisk(uintptr_t ptr, uint64_t start, size_t size) {
+int writedisk(uintptr_t ptr, uint64_t start, size_t size) {
     if (size == 0)
         return 0;
 
@@ -1058,7 +1057,7 @@ writedisk(uintptr_t ptr, uint64_t start, size_t size) {
 // }
 
 
-#define DISKSIZE_MAX ((1UL << 32) * SECTORSIZE)
+//#define DISKSIZE_MAX ((1UL << 32) * SECTORSIZE)
 
 
 int readdisk(uintptr_t ptr, uint64_t start, size_t size) {

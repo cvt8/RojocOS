@@ -1,5 +1,6 @@
 #include "fs.h"
 #include "kernel.h"
+#include "k-hardware.h"
 #include "lib.h"
 #include "entropy.h"
 #include "k-malloc.h"
@@ -335,24 +336,21 @@ void exception(x86_64_registers* reg) {
         process_kill(current->p_pid);
         break;
 
-    // case INT_SYS_HELLO:
-    //     console_printf(CPOS(10, 10), 0xC000, "Hello, from Kernel");
-    //     break;
+    case INT_SYS_HELLO: {
+        console_printf(CPOS(10, 10), 0x0C00, "Hello, from Kernel");
 
-    // DEBUT CHANGEMENT SYSCALL HELLO POUR TEST WRITEDISK ET WRITESECT
-    case INT_SYS_HELLO:
-    console_printf(CPOS(10, 10), 0x0C00, "Hello, from Kernel");
+        /* ─── writesect()/writedisk() smoke test ─── */
+    
+        /*#define SECTORSIZE 512
 
-    /* ─── writesect()/writedisk() smoke test ─── */
-    {
-        static const char pattern[8] = "WS‑TEST";
+        static const char pattern[8] = "WS-TEST";
         uint8_t sector[SECTORSIZE];
 
-        /* 1. write “WS‑TEST” at LBA 300         */
+        // 1. write “WS‑TEST” at LBA 300
         memset(sector, 0, SECTORSIZE);
         memcpy(sector, pattern, sizeof(pattern));
         if (writesect((uintptr_t) sector, 300) == 0) {
-            /* 2. read it back into verify[]      */
+            // 2. read it back into verify[]
             uint8_t verify[SECTORSIZE];
             if (readsect((uintptr_t) verify, 300) == 0 &&
                 memcmp(verify, pattern, sizeof(pattern)) == 0)
@@ -361,10 +359,10 @@ void exception(x86_64_registers* reg) {
                 console_printf(CPOS(12, 10), 0x0400, "Disk verify FAIL");
         } else {
             console_printf(CPOS(12, 10), 0x0400, "writesect() ERR");
-        }
+        }*/
+
+        break;
     }
-    break;
-    // FIN CHANGEMENT SYSCALL HELLO POUR TEST WRITEDISK ET WRITESECT
 
     case INT_SYS_KEYBORD:
         current->p_registers.reg_rax = check_keyboard_pop();
@@ -382,7 +380,7 @@ void exception(x86_64_registers* reg) {
         }
 
         current->fd_max++;
-        if (fdlist_add_entry(current->fd_list, current->fd_max, inode) < 0) {
+        if (fdlist_add_entry(&current->fd_list, current->fd_max, inode) < 0) {
             current->p_registers.reg_rax = -1;
             break;
         };
@@ -421,12 +419,12 @@ void exception(x86_64_registers* reg) {
 
         size_t size = current->p_registers.reg_rdx; // TODO: Max ssize_t / size_t
 
-        proc_fdentry_t *entry = fdlist_search_entry(current->fd_list, fd);
+        proc_fdentry_t *entry = fdlist_search_entry(&current->fd_list, fd);
 
         // check if size available
 
         int r = fs_read(&fsdesc, entry->inode, (void *) buf, size, entry->offset);
-        if (fs_read < 0) {
+        if (r < 0) {
             current->p_registers.reg_rax = r;
             break;
         }

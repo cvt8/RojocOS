@@ -228,11 +228,4 @@ int error_vprintf(int cpos, int color, const char* format, va_list val)
     __attribute__((noinline));
 
 
-
-void readseg(uintptr_t ptr, uint32_t src_sect,
-        size_t filesz, size_t memsz);
-
-
-int readdisk(uintptr_t ptr, uint64_t start, uint64_t size);
-
 #endif
