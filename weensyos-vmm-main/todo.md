@@ -6,7 +6,7 @@ TODO :
 # Memory allocation
 
 TODO :
-- malloc
+- malloc (DONE)
 - sbrk
 
 # Filesystem
