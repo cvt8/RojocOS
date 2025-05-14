@@ -1,4 +1,4 @@
-#include "fs.h"
+#include "filesystem.h"
 
 #define METADATA_SIZE sizeof(fs_metadata)
 #define BLOCK_SIZE 4096
@@ -251,13 +251,30 @@ int fs_getattr(fs_descriptor *fsdesc, const char *path) {
     return node.value;
 }
 
-/*fd_node_child_t* fs_readdir(fs_descriptor *fsdesc, const char *path) {
+int fs_readdir_init(fs_descriptor *fsdesc, const char *path, fs_dirreader *dr) {
     fs_node_t node;
-    if (search_node(fsdesc, path, &node) < 0)
-        return NULL;
+    int64_t r = search_node(fsdesc, path, &node);
+    if (r < 0)
+        return -1;
+    uint32_t node_index = (uint32_t) r;
 
-    return node.children;
-}*/
+    dr->fsdesc = fsdesc;
+    dr->node_index = node_index;
+    dr->offset = 0;
+
+    return node.children_count;
+}
+
+int fs_readdir_next(fs_dirreader *dr, char *buffer) {
+    fs_node_t node;
+    if (dr->fsdesc->fsdr((uintptr_t) &node, dr->fsdesc->tree_offset + dr->node_index * NODE_SIZE, NODE_SIZE) < 0)
+        return -1;
+    
+    strcpy(buffer, node.children[dr->offset].name);
+    dr->offset++;
+
+    return 0;
+}
 
 
 int64_t search_available_node(fs_descriptor *fsdesc) {

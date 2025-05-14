@@ -118,7 +118,7 @@ void panic(const char* format, ...) __attribute__((noinline, noreturn));
 #define INT_SYS_GETCWD          SYSCALL(17) // 79
 #define INT_SYS_CHDIR           SYSCALL(18) // 80
 #define INT_SYS_MKDIR           SYSCALL(19) // 83
-#define INT_SYS_GETRANDOM       SYSCALL(20) // 84
+#define INT_SYS_GETRANDOM       SYSCALL(20)
 
 
 #define INT_SYS_HELLO           SYSCALL(6)
@@ -128,6 +128,7 @@ void panic(const char* format, ...) __attribute__((noinline, noreturn));
 #define INT_SYS_KEYBORD         SYSCALL(9)
 #define INT_SYS_PAGE_ALLOC      SYSCALL(10)
 
+#define INT_SYS_LISTDIR         SYSCALL(21)
 
 
 

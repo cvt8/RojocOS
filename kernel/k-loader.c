@@ -29,6 +29,8 @@ extern uint8_t _binary_obj_p_entropy_start[];
 extern uint8_t _binary_obj_p_entropy_end[];
 extern uint8_t _binary_obj_p_plane_start[];
 extern uint8_t _binary_obj_p_plane_end[];
+extern uint8_t _binary_obj_p_touch_start[];
+extern uint8_t _binary_obj_p_touch_end[];
 // new for below
 
 struct ramimage {
@@ -44,8 +46,8 @@ struct ramimage {
     { _binary_obj_p_mkdir_start, _binary_obj_p_mkdir_end },
     { _binary_obj_p_rand_start, _binary_obj_p_rand_end },
     { _binary_obj_p_entropy_start, _binary_obj_p_entropy_end },
-    { _binary_obj_p_plane_start, _binary_obj_p_plane_end }
-
+    { _binary_obj_p_plane_start, _binary_obj_p_plane_end },
+    { _binary_obj_p_touch_start, _binary_obj_p_touch_end }
 };
 
 static int program_load_segment(proc* p, const elf_program* ph,

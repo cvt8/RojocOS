@@ -1,4 +1,4 @@
-#include "fs.h"
+#include "filesystem.h"
 #include "kernel.h"
 #include "k-hardware.h"
 #include "lib.h"
@@ -434,6 +434,45 @@ void exception(x86_64_registers* reg) {
         break;
     }
 
+    case INT_SYS_LISTDIR: {
+        log_printf("proc %d: exception INT_SYS_LISTDIR (%d)\n", current->p_pid, reg->reg_intno);
+        
+        uintptr_t va = current->p_registers.reg_rdi;
+        vamapping vam = virtual_memory_lookup(current->p_pagetable, va);
+        char *path = (char *) vam.pa;
+
+        va = current->p_registers.reg_rsi;
+        vam = virtual_memory_lookup(current->p_pagetable, va);
+        char *buffer = (char *) vam.pa;
+
+        fs_dirreader dr;
+        int children_count = fs_readdir_init(&fsdesc, path, &dr);
+        if (children_count < 0) {
+            log_printf("proc %d: LISTDIR, readdir_init failed\n", current->p_pid);
+            current->p_registers.reg_rax = -1;
+            break;
+        }
+
+        for (int i = 0; i < children_count; i++) {
+            char name[32]; // TODO: 32 -> NAME_SIZE
+            if (fs_readdir_next(&dr, name) < 0) {
+                log_printf("proc %d: LISTDIR, readdir_next failed\n", current->p_pid);
+                current->p_registers.reg_rax = -1;
+                break;
+            }
+
+            buffer += strcmp(buffer, name);
+            *buffer = '\n';
+            buffer++;
+        }
+
+        *buffer = '\0';
+
+        log_printf("proc %d: LISTDIR, success\n", current->p_pid);
+        current->p_registers.reg_rax = 0;
+        break;
+    }
+
     case INT_SYS_EXECV: {
 
         log_printf("proc %d: exception INT_SYS_EXECV (%d)\n", current->p_pid, reg->reg_intno);
@@ -505,7 +544,13 @@ void exception(x86_64_registers* reg) {
             program_number = 7;
         } else if (strcmp(path, "entropy") == 0) {
             log_printf("run entropy\n");
-            program_number = 8;        // make sure this matches ramimages[]
+            program_number = 8;
+        } else if (strcmp(path, "plane") == 0) {
+            log_printf("run plane\n");
+            program_number = 9;
+        } else if (strcmp(path, "touch") == 0) {
+            log_printf("run touch\n");
+            program_number = 10;
         } else {
             log_printf("command not found : %s\n", path);
             current->p_registers.reg_rax = -1;

@@ -4,10 +4,13 @@
 
 
 void process_main() {
-    pid_t p = sys_getpid();
-    
-    app_printf(3, "Hello, from process %d\n", p);
-    app_printf(3, "num : %d \n", 5);
+
+    char buffer[64];
+
+    int r = sys_listdir("/", buffer);
+    assert(r >= 0);
+
+    app_printf(0, "%s", buffer);
 
     sys_exit(0);
 }

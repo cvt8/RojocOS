@@ -26,6 +26,12 @@ typedef struct fs_descriptor {
     uintptr_t data_offset;
 } fs_descriptor;
 
+
+typedef struct {
+    fs_descriptor *fsdesc;
+    uint32_t node_index;
+    int offset;
+} fs_dirreader;
  
 
 int fs_init(fs_descriptor *fsdesc, fs_disk_reader fsdr, fs_disk_writer fsdw);
@@ -40,5 +46,9 @@ int fs_truncate(fs_descriptor *fsdesc, fs_ino ino, off_t size);
 int fs_read(fs_descriptor *fsdesc, fs_ino ino, void *buf, size_t size, off_t offset);
 
 int fs_write(fs_descriptor *fsdesc, fs_ino ino, void *buf, size_t size, off_t offset);
+
+int fs_readdir_init(fs_descriptor *fsdesc, const char *path, fs_dirreader *dr);
+int fs_readdir_next(fs_dirreader *dr, char *buffer);
+
 
 #endif

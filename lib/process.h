@@ -77,7 +77,13 @@ static inline ssize_t sys_read(int fd, void *buf, size_t count) {
     return result;
 }
 
-
+static inline int sys_listdir(const char *path, char *buffer) {
+    int result;
+    asm volatile ("int %1" : "=a" (result)
+                  : "i" (INT_SYS_LISTDIR), "D" /* %rdi */ (path), "S" /* %rsi */ (buffer)
+                  : "cc", "memory");
+    return result;
+}
 
 static inline int sys_wait(pid_t pid, int* exit_code) {
     int result;

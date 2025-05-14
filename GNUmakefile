@@ -44,25 +44,25 @@ endif
 BOOT_OBJS = $(OBJDIR)/bootentry.o $(OBJDIR)/boot.o
 
 KERNEL_C_OBJS = $(OBJDIR)/kernel.o $(OBJDIR)/k-hardware.o $(OBJDIR)/k-loader.o $(OBJDIR)/k-malloc.o $(OBJDIR)/k-filedescriptor.o $(OBJDIR)/entropy.o
-KERNEL_OBJS = $(OBJDIR)/k-exception.o $(KERNEL_C_OBJS) $(OBJDIR)/lib.o $(OBJDIR)/fs.o
+KERNEL_OBJS = $(OBJDIR)/k-exception.o $(KERNEL_C_OBJS) $(OBJDIR)/lib.o $(OBJDIR)/filesystem.o
 KERNEL_LINKER_FILES = link/kernel.ld link/shared.ld
 
 PROCESS_BINARIES = $(OBJDIR)/p-allocator $(OBJDIR)/p-fork \
 	$(OBJDIR)/p-shell $(OBJDIR)/p-cat $(OBJDIR)/p-echo $(OBJDIR)/p-ls $(OBJDIR)/p-mkdir $(OBJDIR)/p-rand $(OBJDIR)/p-entropy \
-	$(OBJDIR)/p-plane
+	$(OBJDIR)/p-plane $(OBJDIR)/p-touch
 PROCESS_LIB_OBJS = $(OBJDIR)/lib.o $(OBJDIR)/process.o $(OBJDIR)/lib-malloc.o
 ALLOCATOR_OBJS = $(OBJDIR)/p-allocator.o $(PROCESS_LIB_OBJS)
 
 PROCESS_SRC_OBJS = $(OBJDIR)/p-allocator.o $(OBJDIR)/p-fork.o \
 	$(OBJDIR)/p-shell.o $(OBJDIR)/p-cat.o $(OBJDIR)/p-echo.o $(OBJDIR)/p-mkdir.o $(OBJDIR)/p-rand.o $(OBJDIR)/p-entropy.o \
-	$(OBJDIR)/p-plane.o $(OBJDIR)/p-ls.o
+	$(OBJDIR)/p-plane.o $(OBJDIR)/p-ls.o $(OBJDIR)/p-touch.o
 PROCESS_OBJS = $(PROCESS_SRC_OBJS) $(PROCESS_LIB_OBJS)
 PROCESS_LINKER_FILES = link/process.ld link/shared.ld
 
 
 # Generic rules for making object files
 
-$(OBJDIR)/lib.o $(OBJDIR)/fs.o: $(OBJDIR)/%.o: lib/%.c $(BUILDSTAMPS)
+$(OBJDIR)/lib.o $(OBJDIR)/filesystem.o: $(OBJDIR)/%.o: lib/%.c $(BUILDSTAMPS)
 	$(call compile,-c $< -o $@,COMPILE)
 
 $(OBJDIR)/bootentry.o: $(OBJDIR)/%.o: boot/%.S $(BUILDSTAMPS)
