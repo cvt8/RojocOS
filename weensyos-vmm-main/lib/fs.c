@@ -67,6 +67,34 @@ int are_blocks_avaiblable(fs_descriptor *fsdesc, int start_block, int n) {
 }
 
 
+int set_availability(fs_descriptor *fsdesc, int block, unsigned char value) {
+    uintptr_t addr = fsdesc->avail_block_table_offset + block;
+
+    if (fsdesc->fsdw(&value, addr, 1) < 0) {
+        return -1;
+    }
+    
+    return 0;
+}
+
+int copy_block(fs_descriptor *fsdesc, int src, int dest) {
+    char buf[BLOCK_SIZE];
+
+    uintptr_t src_addr = fsdesc->data_offset + src * BLOCK_SIZE;
+    uintptr_t dest_addr = fsdesc->data_offset + dest * BLOCK_SIZE;
+
+    if (fsdesc->fsdr(buf, src_addr, BLOCK_SIZE) < 0) {
+        return -1;
+    }
+
+    if (fsdesc->fsdw(buf, dest_addr, BLOCK_SIZE) < 0) {
+        return -1;
+    }
+
+    return 0;
+}
+
+
 
 int fs_init(fs_descriptor *fsdesc, fs_disk_reader fsdr, fs_disk_writer fsdw) {
     fsdesc->fsdr = fsdr;
@@ -110,15 +138,31 @@ int fs_write(fs_descriptor *fsdesc, fs_ino ino, char *buf, size_t size, off_t of
         return r;
     }
 
-
-    int offset_block = CEIL_DIV(offset, BLOCK_SIZE);
-
-    if (offset_block > entry.block_count) {
-        int new_block = offset_block - entry.block_count;
+    int total_block = CEIL_DIV(offset+size, BLOCK_SIZE);
+    if (total_block > entry.block_count) {
+        int new_block = total_block - entry.block_count;
         
+        if (are_blocks_avaiblable(fsdesc, entry.start_block + entry.block_count, new_block)) {
+            for (int i = 0; i < new_block; i++) {
+                set_availability(fsdesc, entry.start_block + entry.block_count + i, 1);
+            }
+        } else {
+            int new_start_block = search_free_blocks(fsdesc, total_block);
+            if (r < 0) {
+                return -1;
+            }
 
-        
-        // Check if new_block are avaible at 
+            for (int i = 0; i < entry.block_count; i++) {
+                copy_block(fsdesc, entry.start_block + i, new_start_block + i);
+                set_availability(fsdesc, entry.start_block + i, 0);
+                set_availability(fsdesc, new_start_block + i, 1);
+            }
+
+            entry.start_block = new_start_block;
+        }
+
+        entry.block_count = total_block;
+        fsdesc->fsdw(&entry, entry_addr, INODE_ENTRY_SIZE);
     }
 
     uintptr_t start_addr = fsdesc->data_offset + entry.start_block * BLOCK_SIZE + offset;

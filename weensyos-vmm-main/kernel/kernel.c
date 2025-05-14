@@ -3,6 +3,7 @@
 #include "lib.h"
 #include "entropy.h"
 #include "k-malloc.h"
+#include "k-filedescriptor.h"
 
 // kernel.c
 //
@@ -81,6 +82,10 @@ static fs_descriptor fsdesc;
 
 static int fs_read_disk(uintptr_t ptr, uint64_t start, size_t size) {
     return readdisk(ptr, start + FILESYSTEM_DISK_OFFSET, size);
+}
+
+static int fs_write_disk(uintptr_t ptr, uint64_t start, size_t size) {
+    return writedisk(ptr, start + FILESYSTEM_DISK_OFFSET, size);
 }
 
 
@@ -341,15 +346,28 @@ void exception(x86_64_registers* reg) {
     case INT_SYS_OPEN: {
         uintptr_t va = current->p_registers.reg_rdi;
         vamapping vam = virtual_memory_lookup(current->p_pagetable, va);
-        char *pathname = (char *) vam.pa;
+        char *path = (char *) vam.pa;
 
-        current->p_registers.reg_rax = 1;
+        int inode = fs_getattr(&fsdesc, path);
+        if (inode <= 0) {
+            current->p_registers.reg_rax = inode;
+            break;
+        }
+
+        current->fd_max++;
+        if (fdlist_add_entry(current->fd_list, current->fd_max, inode) < 0) {
+            current->p_registers.reg_rax = -1;
+            break;
+        };
+
+        current->p_registers.reg_rax = inode;
+        current->p_registers.reg_rax = current->fd_max;
         break;
     }
 
     case INT_SYS_GETRANDOM:
-    current->p_registers.reg_rax = get_entropy_value();
-    break;
+        current->p_registers.reg_rax = get_entropy_value();
+        break;
 
     case INT_SYS_PAGE_ALLOC: {
         uintptr_t vaddr = current->p_registers.reg_rdi;
@@ -376,13 +394,18 @@ void exception(x86_64_registers* reg) {
 
         size_t size = current->p_registers.reg_rdx; // TODO: Max ssize_t / size_t
 
-        int r = fs_read(&fsdesc, 1, (void *) buf, size, 0);
-        if (r < 0) {
+        proc_fdentry_t *entry = fdlist_search_entry(current->fd_list, fd);
+
+        // check if size available
+
+        int r = fs_read(&fsdesc, entry->inode, (void *) buf, size, entry->offset);
+        if (fs_read < 0) {
             current->p_registers.reg_rax = r;
             break;
         }
 
-        current->p_registers.reg_rax = size;
+        entry->offset += r;
+        current->p_registers.reg_rax = r;
         break;
     }
 

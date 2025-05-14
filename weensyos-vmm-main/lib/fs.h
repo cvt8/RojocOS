@@ -26,15 +26,15 @@ typedef struct fs_descriptor {
 
 int fs_init(fs_descriptor *fsdesc, fs_disk_reader fsdr, fs_disk_writer fsdw);
 
-int fs_getattr(fs_descriptor *fsdesc, const char *path, struct fs_stat *stbuf);
+// return value is negative if an error occured
+// return value is 0 is it is a directory
+// return value is positive if it is a file, the value is the inode of the data
+int fs_getattr(fs_descriptor *fsdesc, const char *path);
 
-int fs_truncate(fs_descriptor *fsdesc, fs_ino ino, off_t size,
-        struct fs_file_info *fi);
+int fs_truncate(fs_descriptor *fsdesc, fs_ino ino, off_t size);
 
-int fs_read(fs_descriptor *fsdesc, fs_ino ino, char *buf, size_t size,
-        off_t offset, struct fs_file_info *fi);
+int fs_read(fs_descriptor *fsdesc, fs_ino ino, char *buf, size_t size, off_t offset);
 
-int fs_write(fs_descriptor *fsdesc, fs_ino ino, const char *buf, size_t size,
-        off_t offset, struct fs_file_info *fi);
+int fs_write(fs_descriptor *fsdesc, fs_ino ino, const char *buf, size_t size, off_t offset);
 
 #endif

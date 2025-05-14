@@ -10,9 +10,9 @@
 //    Functions, constants, and definitions for the kernel.
 
 #define PO_FREE 0
-#define PO_RESERVED -1
-#define PO_KERNEL -2
-#define PO_KERNEL_HEAP -3
+#define PO_RESERVED (-1)
+#define PO_KERNEL (-2)
+#define PO_KERNEL_HEAP (-3)
 
 typedef int pageowner_t;            // process IDs
 
@@ -23,6 +23,17 @@ typedef enum procstate {
     P_BLOCKED,                          // blocked process
     P_BROKEN                            // faulted process
 } procstate_t;
+
+
+typedef struct proc_fdentry {
+    int fd;                             // file descriptor
+    int inode;                          // file inode
+    int offset;                         // offset in the file
+    struct proc_fdentry* next;         // next entry in the list
+} proc_fdentry_t;
+
+typedef proc_fdentry_t* proc_fdlist_t;
+
 
 // Process descriptor type
 typedef struct proc {
@@ -35,6 +46,8 @@ typedef struct proc {
     int p_exit_code;
     char p_cwd[256];
     x86_64_pagetable* p_pagetable;      // process's page table
+    proc_fdlist_t fd_list;             // file descriptor list
+    int fd_max;
 } proc;
 
 #define NPROC 16                // maximum number of processes
