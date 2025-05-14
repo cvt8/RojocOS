@@ -1,5 +1,5 @@
 #ifndef WEENSYOS_K_HARDWARE_H
-#define WEENSYOF_K_HARDWARE_H
+#define WEENSYOS_K_HARDWARE_H
 
 #include "lib.h"
 
