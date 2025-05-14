@@ -11,27 +11,41 @@
 
 extern uint8_t _binary_obj_p_allocator_start[];
 extern uint8_t _binary_obj_p_allocator_end[];
-extern uint8_t _binary_obj_p_allocator2_start[];
-extern uint8_t _binary_obj_p_allocator2_end[];
-extern uint8_t _binary_obj_p_allocator3_start[];
-extern uint8_t _binary_obj_p_allocator3_end[];
-extern uint8_t _binary_obj_p_allocator4_start[];
-extern uint8_t _binary_obj_p_allocator4_end[];
 extern uint8_t _binary_obj_p_fork_start[];
 extern uint8_t _binary_obj_p_fork_end[];
-extern uint8_t _binary_obj_p_forkexit_start[];
-extern uint8_t _binary_obj_p_forkexit_end[];
+extern uint8_t _binary_obj_p_shell_start[];
+extern uint8_t _binary_obj_p_shell_end[];
+extern uint8_t _binary_obj_p_cat_start[];
+extern uint8_t _binary_obj_p_cat_end[];
+extern uint8_t _binary_obj_p_echo_start[];
+extern uint8_t _binary_obj_p_echo_end[];
+extern uint8_t _binary_obj_p_ls_start[];
+extern uint8_t _binary_obj_p_ls_end[];
+extern uint8_t _binary_obj_p_mkdir_start[];
+extern uint8_t _binary_obj_p_mkdir_end[];
+extern uint8_t _binary_obj_p_rand_start[];
+extern uint8_t _binary_obj_p_rand_end[];
+extern uint8_t _binary_obj_p_entropy_start[];
+extern uint8_t _binary_obj_p_entropy_end[];
+extern uint8_t _binary_obj_p_plane_start[];
+extern uint8_t _binary_obj_p_plane_end[];
+// new for below
 
 struct ramimage {
     void* begin;
     void* end;
 } ramimages[] = {
     { _binary_obj_p_allocator_start, _binary_obj_p_allocator_end },
-    { _binary_obj_p_allocator2_start, _binary_obj_p_allocator2_end },
-    { _binary_obj_p_allocator3_start, _binary_obj_p_allocator3_end },
-    { _binary_obj_p_allocator4_start, _binary_obj_p_allocator4_end },
     { _binary_obj_p_fork_start, _binary_obj_p_fork_end },
-    { _binary_obj_p_forkexit_start, _binary_obj_p_forkexit_end }
+    { _binary_obj_p_shell_start, _binary_obj_p_shell_end },
+    { _binary_obj_p_cat_start, _binary_obj_p_cat_end },
+    { _binary_obj_p_echo_start, _binary_obj_p_echo_end },
+    { _binary_obj_p_ls_start, _binary_obj_p_ls_end },
+    { _binary_obj_p_mkdir_start, _binary_obj_p_mkdir_end },
+    { _binary_obj_p_rand_start, _binary_obj_p_rand_end },
+    { _binary_obj_p_entropy_start, _binary_obj_p_entropy_end },
+    { _binary_obj_p_plane_start, _binary_obj_p_plane_end }
+
 };
 
 static int program_load_segment(proc* p, const elf_program* ph,
@@ -78,29 +92,29 @@ int program_load(proc* p, int programnumber,
 //    to map them in `p->p_pagetable`. Returns 0 on success and -1 on failure.
 
 static int program_load_segment(proc* p, const elf_program* ph,
-                                const uint8_t* src,
-                                x86_64_pagetable* (*allocator)(void)) {
+        const uint8_t* src,
+        x86_64_pagetable* (*allocator)(void)) {
     uintptr_t va = (uintptr_t) ph->p_va;
     uintptr_t end_file = va + ph->p_filesz, end_mem = va + ph->p_memsz;
     va &= ~(PAGESIZE - 1);                // round to page boundary
 
     // allocate memory
     for (uintptr_t addr = va; addr < end_mem; addr += PAGESIZE) {
-        uintptr_t paddr = page_alloc(p->p_pid);
+    uintptr_t paddr = page_alloc(p->p_pid);
 
-        if (paddr > 0) {
-            if (virtual_memory_map(p->p_pagetable, addr, paddr, PAGESIZE,
-                                       PTE_P | PTE_W | PTE_U, allocator) < 0) {
-                paddr = 0;
-            }
-        }
-    
-        if (paddr <= 0) {
-                console_printf(CPOS(22, 0), 0xC000,
-            "program_load_segment(pid %d): can't assign address %p\n",
-            p->p_pid, addr);
-                return -1;
-        }
+    if (paddr > 0) {
+    if (virtual_memory_map(p->p_pagetable, addr, paddr, PAGESIZE,
+            PTE_P | PTE_W | PTE_U, allocator) < 0) {
+    paddr = 0;
+    }
+    }
+
+    if (paddr <= 0) {
+    console_printf(CPOS(22, 0), 0xC000,
+    "program_load_segment(pid %d): can't assign address %p\n",
+    p->p_pid, addr);
+    return -1;
+    }
     }
 
     // ensure new memory mappings are active

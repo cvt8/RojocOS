@@ -7,14 +7,37 @@
 #define SIZE_TO_BLOCK(x) ((uint32_t) (((x) + BLOCK_SIZE - 1) / BLOCK_SIZE))
 
 
-
 struct fs_inode_entry {
     uint64_t start_block;
     uint64_t block_count;
     unsigned char cipher_key[256];
 };
 
+#define NAME_SIZE 32
+#define MAX_CHILDREN 32
+
+typedef struct fd_node_child {
+    char name[NAME_SIZE];
+    uint32_t index;
+} fd_node_child_t;
+
+typedef struct fs_node {
+    uint8_t used;
+    int value;
+    int children_count;
+    fd_node_child_t children[MAX_CHILDREN];
+} fs_node_t;
+
+
+#define NODE_SIZE sizeof(fs_node_t)
+
+
 #define INODE_ENTRY_SIZE sizeof(struct fs_inode_entry)
+
+
+static const uint8_t ZERO = 0;
+static const uint8_t ONE = 1;
+
 
 
 int64_t search_free_blocks(fs_descriptor *fsdesc, uint32_t n) {
@@ -67,10 +90,10 @@ int are_blocks_avaiblable(fs_descriptor *fsdesc, int start_block, int n) {
 }
 
 
-int set_availability(fs_descriptor *fsdesc, int block, unsigned char value) {
+int set_availability(fs_descriptor *fsdesc, int block, const uint8_t *value) {
     uintptr_t addr = fsdesc->avail_block_table_offset + block;
 
-    if (fsdesc->fsdw((uintptr_t) &value, addr, 1) < 0) {
+    if (fsdesc->fsdw((uintptr_t) value, addr, 1) < 0) {
         return -1;
     }
     
@@ -105,8 +128,11 @@ int fs_init(fs_descriptor *fsdesc, fs_disk_reader fsdr, fs_disk_writer fsdw) {
         return r;
     }
 
-    fsdesc->data_offset = 0;
-    // TODO : METADATA_SIZE + fsdesc->metadata.inode_count * INODE_ENTRY_SIZE + ...;
+    fsdesc->inode_table_offset = METADATA_SIZE;
+    fsdesc->block_usage_offset = fsdesc->inode_table_offset + fsdesc->metadata.inode_count * INODE_ENTRY_SIZE;
+    fsdesc->tree_usage_offset = fsdesc->block_usage_offset + fsdesc->metadata.inode_count;
+    fsdesc->tree_offset = fsdesc->tree_usage_offset + fsdesc->metadata.block_count * BLOCK_SIZE;
+    fsdesc->data_offset = fsdesc->tree_offset + fsdesc->metadata.node_count * NODE_SIZE;
 
     return 0;
 }
@@ -141,7 +167,7 @@ int fs_write(fs_descriptor *fsdesc, fs_ino ino, void *buf, size_t size, off_t of
         
         if (are_blocks_avaiblable(fsdesc, entry.start_block + entry.block_count, new_block)) {
             for (int i = 0; i < new_block; i++) {
-                set_availability(fsdesc, entry.start_block + entry.block_count + i, 1);
+                set_availability(fsdesc, entry.start_block + entry.block_count + i, &ONE);
             }
         } else {
             int64_t r = search_free_blocks(fsdesc, total_block);
@@ -153,8 +179,8 @@ int fs_write(fs_descriptor *fsdesc, fs_ino ino, void *buf, size_t size, off_t of
 
             for (uint32_t i = 0; i < entry.block_count; i++) {
                 copy_block(fsdesc, entry.start_block + i, new_start_block + i);
-                set_availability(fsdesc, entry.start_block + i, 0);
-                set_availability(fsdesc, new_start_block + i, 1);
+                set_availability(fsdesc, entry.start_block + i, &ZERO);
+                set_availability(fsdesc, new_start_block + i, &ONE);
             }
 
             entry.start_block = new_start_block;
@@ -171,52 +197,140 @@ int fs_write(fs_descriptor *fsdesc, fs_ino ino, void *buf, size_t size, off_t of
     return 0;
 }
 
-// A vérifier
+int follow_node(fs_descriptor *fsdesc, fs_node_t* src_node, const char *edge, fs_node_t* dst_node) {
+    for (int i = 0; i < MAX_CHILDREN; i++) {
+        if (strcmp(src_node->children[i].name, edge) == 0) {
+            uintptr_t node_addr = fsdesc->tree_offset + src_node->children[i].index * NODE_SIZE;
 
-struct fs_stat {
-    fs_ino st_ino; // Inode number
-    off_t st_size; // File size in bytes
-};
+            if (fsdesc->fsdr((uintptr_t) dst_node, node_addr, NODE_SIZE) < 0)
+                return -1;
+
+            return 0;
+        }
+    }
+
+    return -1;
+}
+
+int search_node(fs_descriptor *fsdesc, const char *path, fs_node_t *node) {
+    if (path[0] != '\\')
+        return -1;
+
+    if (fsdesc->fsdr((uintptr_t) node, fsdesc->tree_offset, NODE_SIZE) < 0)
+        return -1;
+
+    while (*path != '\0') {
+        if (*path == '\\')
+            path++;
+        
+        char name[NAME_SIZE];
+        int i = 0;
+        while (*path != '\0' && *path != '\\') {
+            name[i] = *path;
+            i++;
+
+            if (i == NAME_SIZE - 1)
+                return -1;
+            
+            path++;
+        }
+        name[i] = '\0';
+
+        if (follow_node(fsdesc, node, name, node) < 0)
+            return -1;
+    }
+
+    return 0;
+}
 
 int fs_getattr(fs_descriptor *fsdesc, const char *path) {
-    // Validate inputs
-    if (fsdesc == NULL || path == NULL) {
+    fs_node_t node;
+    if (search_node(fsdesc, path, &node) < 0)
         return -1;
+
+    return node.value;
+}
+
+/*fd_node_child_t* fs_readdir(fs_descriptor *fsdesc, const char *path) {
+    fs_node_t node;
+    if (search_node(fsdesc, path, &node) < 0)
+        return NULL;
+
+    return node.children;
+}*/
+
+
+int64_t search_available_node(fs_descriptor *fsdesc) {
+    for (uint32_t i = 0; i < fsdesc->metadata.node_count; i++) {
+        uint8_t used;
+
+        if (fsdesc->fsdr((uintptr_t) &used, fsdesc->tree_usage_offset + i, 1) < 0)
+            return -1;
+
+        if (used == 0)
+            return i;
     }
 
-    // Handle root directory or invalid paths
-    if (path[0] == '\0' || strcmp(path, "/") == 0) {
-        return 0; // Root is a directory
+    return -1;
+}
+
+
+
+
+int fs_touch(fs_descriptor *fsdesc, const char *parent_path, const char *name, int value) {
+    /*int parent_path_size = 0;
+    int name_size = 0;
+    
+    char *cur = path;
+    while (*cur) {
+        if (*cur == '\\') {
+            parent_path_size += name_size + 1;
+            name_size = 0;
+        }
+
+        cur++;
     }
 
-    // Assume path is a simple name like "fileN" where N is the inode number
-    // Extract inode number from path (e.g., "file1" -> ino = 1)
-    fs_ino ino = 0;
-    if (strcmp(path, "file") == 0 && path[4] >= '0' && path[4] <= '9') {
-        ino = atoi(path + 4);
-    } else {
-        return -1; // Invalid path format
+    if (name_size == 0)
+        return -1;*/
+
+    
+    fs_node_t node;
+    
+    int64_t r = search_node(fsdesc, parent_path, &node);
+    if (r < 0)
+        return -1;
+    uint32_t parent_node_index = (uint32_t) r;
+    
+    if (node.children_count == MAX_CHILDREN)
+        return -1;
+
+    int i = 0;
+    while (node.children[i].index == 0) {
+        i += 1;
+        
+        if (i == MAX_CHILDREN)
+            return -1;
     }
 
-    // Validate inode number
-    if (ino >= fsdesc->metadata.inode_count) {
-        return -1; // Inode out of range
-    }
 
-    // Read inode entry
-    uintptr_t entry_addr = METADATA_SIZE + ino * INODE_ENTRY_SIZE;
-    struct fs_inode_entry entry;
-    int r = fsdesc->fsdr((uintptr_t) &entry, entry_addr, INODE_ENTRY_SIZE);
-    if (r < 0) {
-        return -1; // Disk read error
-    }
+    r = search_available_node(fsdesc);
+    if (r < 0)
+        return -1;
+    uint32_t child_node_index = (uint32_t) r;
 
-    // Return inode number for files (block_count > 0), -1 for directories (block_count == 0)
-    if (entry.block_count > 0) {
-        return ino; // File
-    } else {
-        return 0; // Directory
-    }
+
+    strcpy(node.children[i].name, name);
+    node.children[i].index = child_node_index;
+    fsdesc->fsdw((uintptr_t) &node, fsdesc->tree_offset + parent_node_index, NODE_SIZE);
+
+    
+    memset(&node, 0, NODE_SIZE);
+    node.value = value;
+    fsdesc->fsdw((uintptr_t) &ONE, fsdesc->tree_usage_offset + child_node_index, 1);
+    fsdesc->fsdw((uintptr_t) &node, fsdesc->tree_offset + child_node_index, NODE_SIZE);
+
+    return 0;
 }
 
 

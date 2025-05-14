@@ -19,6 +19,10 @@ typedef struct fs_descriptor {
     fs_disk_writer fsdw;
     fs_metadata metadata;
     uintptr_t avail_block_table_offset;
+    uintptr_t inode_table_offset;
+    uintptr_t block_usage_offset;
+    uintptr_t tree_usage_offset;
+    uintptr_t tree_offset;
     uintptr_t data_offset;
 } fs_descriptor;
 

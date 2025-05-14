@@ -10,12 +10,10 @@ all: $(IMAGE)
 V = 0
 ifeq ($(V),1)
 compile = $(CC) $(CPPFLAGS) $(CFLAGS) $(DEPCFLAGS) $(1)
-cpp_compile = $(CXX) $(CPP_CPPFLAGS) $(CXXFLAGS) $(DEPCXXFLAGS) $(1)
 link = $(LD) $(LDFLAGS) $(1)
 run = $(1) $(3)
 else
 compile = @/bin/echo " " $(2) $< && $(CC) $(CPPFLAGS) $(CFLAGS) $(DEPCFLAGS) $(1)
-cpp_compile = @/bin/echo " " $(2) $< && $(CXX) $(CPP_CPPFLAGS) $(CXXFLAGS) $(DEPCXXFLAGS) $(1)
 link = @/bin/echo " " $(2) $(patsubst %.full,%,$@) && $(LD) $(LDFLAGS) $(1)
 run = @$(if $(2),/bin/echo " " $(2) $(3) &&,) $(1) $(3)
 endif
@@ -45,19 +43,20 @@ endif
 
 BOOT_OBJS = $(OBJDIR)/bootentry.o $(OBJDIR)/boot.o
 
-KERNEL_C_OBJS = $(OBJDIR)/kernel.o $(OBJDIR)/k-hardware.o $(OBJDIR)/k-loader.o $(OBJDIR)/k-malloc.o $(OBJDIR)/k-filesystem.o $(OBJDIR)/k-filedescriptor.o $(OBJDIR)/entropy.o
+KERNEL_C_OBJS = $(OBJDIR)/kernel.o $(OBJDIR)/k-hardware.o $(OBJDIR)/k-loader.o $(OBJDIR)/k-malloc.o $(OBJDIR)/k-filedescriptor.o $(OBJDIR)/entropy.o
 KERNEL_OBJS = $(OBJDIR)/k-exception.o $(KERNEL_C_OBJS) $(OBJDIR)/lib.o $(OBJDIR)/fs.o
 KERNEL_LINKER_FILES = link/kernel.ld link/shared.ld
 
 PROCESS_BINARIES = $(OBJDIR)/p-allocator $(OBJDIR)/p-fork \
-	$(OBJDIR)/p-shell $(OBJDIR)/p-cat $(OBJDIR)/p-echo $(OBJDIR)/p-ls $(OBJDIR)/p-mkdir $(OBJDIR)/p-rand $(OBJDIR)/p-entropy
+	$(OBJDIR)/p-shell $(OBJDIR)/p-cat $(OBJDIR)/p-echo $(OBJDIR)/p-ls $(OBJDIR)/p-mkdir $(OBJDIR)/p-rand $(OBJDIR)/p-entropy \
+	$(OBJDIR)/p-plane
 PROCESS_LIB_OBJS = $(OBJDIR)/lib.o $(OBJDIR)/process.o $(OBJDIR)/lib-malloc.o
 ALLOCATOR_OBJS = $(OBJDIR)/p-allocator.o $(PROCESS_LIB_OBJS)
 
-PROCESS_SRC_C_OBJS = $(OBJDIR)/p-allocator.o $(OBJDIR)/p-fork.o \
-	$(OBJDIR)/p-shell.o $(OBJDIR)/p-cat.o $(OBJDIR)/p-echo.o $(OBJDIR)/p-mkdir.o $(OBJDIR)/p-rand.o $(OBJDIR)/p-entropy.o
-PROCESS_SRC_CPP_OBJS = $(OBJDIR)/p-ls.o
-PROCESS_OBJS = $(PROCESS_SRC_C_OBJS) $(PROCESS_SRC_CPP_OBJS) $(PROCESS_LIB_OBJS)
+PROCESS_SRC_OBJS = $(OBJDIR)/p-allocator.o $(OBJDIR)/p-fork.o \
+	$(OBJDIR)/p-shell.o $(OBJDIR)/p-cat.o $(OBJDIR)/p-echo.o $(OBJDIR)/p-mkdir.o $(OBJDIR)/p-rand.o $(OBJDIR)/p-entropy.o \
+	$(OBJDIR)/p-plane.o $(OBJDIR)/p-ls.o
+PROCESS_OBJS = $(PROCESS_SRC_OBJS) $(PROCESS_LIB_OBJS)
 PROCESS_LINKER_FILES = link/process.ld link/shared.ld
 
 
@@ -78,11 +77,8 @@ $(OBJDIR)/k-exception.o: $(OBJDIR)/%.o: kernel/%.S $(BUILDSTAMPS)
 $(KERNEL_C_OBJS): $(OBJDIR)/%.o: kernel/%.c $(BUILDSTAMPS) 
 	$(call compile,-Ielf -Ilib -DWEENSYOS_KERNEL -c $< -o $@,COMPILE)
 
-$(PROCESS_SRC_C_OBJS): $(OBJDIR)/%.o: processes/%.c $(BUILDSTAMPS)
+$(PROCESS_SRC_OBJS): $(OBJDIR)/%.o: processes/%.c $(BUILDSTAMPS)
 	$(call compile,-Ilib -O1 -DWEENSYOS_PROCESS -c $< -o $@,COMPILE)
-
-$(PROCESS_SRC_CPP_OBJS): $(OBJDIR)/%.o: processes/%.cpp $(BUILDSTAMPS)
-	$(call cpp_compile,-Ilib -O1 -DWEENSYOS_PROCESS -c $< -o $@,COMPILE)
 
 $(OBJDIR)/process.o $(OBJDIR)/lib-malloc.o: $(OBJDIR)/%.o: lib/%.c $(BUILDSTAMPS)
 	$(call compile,-O1 -DWEENSYOS_PROCESS -c $< -o $@,COMPILE)

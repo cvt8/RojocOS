@@ -22,11 +22,6 @@ int fdlist_add_entry(proc_fdlist_t *fdl, int fd, int inode) {
     return 0;
 }
 
-int fdlist_remove_entry(proc_fdlist_t *fdl, int fd) {
-    // TODO
-    return -1;
-}
-
 int fdlist_get_inode(proc_fdlist_t *fdl, int fd) {
     while (*fdl) {
         if ((*fdl)->fd == fd) {
@@ -39,7 +34,6 @@ int fdlist_get_inode(proc_fdlist_t *fdl, int fd) {
     return -1;
 }
 
-
 proc_fdentry_t* fdlist_search_entry(proc_fdlist_t *fdl, int fd) {
     while (*fdl) {
         if ((*fdl)->fd == fd) {
@@ -50,4 +44,17 @@ proc_fdentry_t* fdlist_search_entry(proc_fdlist_t *fdl, int fd) {
     }
 
     return NULL;
+}
+
+int fdlist_remove_entry(proc_fdlist_t *fdl, int fd) {
+    while (*fdl) {
+        if ((*fdl)->fd == fd) {
+            *fdl = (*fdl)->next;
+            return 0;
+        }
+        
+        *fdl = (*fdl)->next;
+    }
+    
+    return -1;
 }
