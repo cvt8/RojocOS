@@ -112,6 +112,16 @@ static inline void sys_yield(void) {
                   : "cc", "memory");
 }
 
+/* Random from kernel*/
+static inline unsigned sys_getrandom(void) {
+    uint64_t rax;
+    asm volatile ("int %1" : "=a"(rax)
+                  : "i"(INT_SYS_GETRANDOM)
+                  : "cc", "memory");
+    return (unsigned) rax;
+}
+
+
 // sys_page_alloc(addr)
 //    Allocate a page of memory at address `addr`. `Addr` must be page-aligned
 //    (i.e., a multiple of PAGESIZE == 4096). Returns 0 on success and -1

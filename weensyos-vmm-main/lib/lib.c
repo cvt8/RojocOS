@@ -1,6 +1,10 @@
 #include "lib.h"
 #include "x86-64.h"
 
+#if !WEENSYOS_KERNEL          /* user‑process build only */
+#include "process.h"          /* brings in inline sys_getpid()      */
+#endif
+
 // lib.c
 //
 //    Functions useful in both kernel and applications.
@@ -84,22 +88,48 @@ char* strchr(const char* s, int c) {
 }
 
 
-// rand, srand
+// // rand, srand
 
-static int rand_seed_set;
+// static int rand_seed_set;
+// static unsigned rand_seed;
+
+// int rand(void) {
+//     if (!rand_seed_set) {
+//         srand(819234718U);
+//     }
+//     rand_seed = rand_seed * 1664525U + 1013904223U;
+//     return rand_seed & RAND_MAX;
+// }
+
+// void srand(unsigned seed) {
+//     rand_seed = seed;
+//     rand_seed_set = 1;
+// }
+
+// New randomness implementation
+static int      rand_seed_set;
 static unsigned rand_seed;
 
 int rand(void) {
     if (!rand_seed_set) {
-        srand(819234718U);
+#if WEENSYOS_KERNEL
+        extern unsigned get_entropy_value(void);
+        srand(get_entropy_value());
+#else           // user‑space build
+       unsigned seed = sys_getrandom();     /* 128‑bit kernel entropy */
+       if (!seed) {                         /* fallback if syscall fails */
+           seed = (unsigned) read_cycle_counter() ^ ((unsigned) sys_getpid() << 16);
+       }
+       srand(seed);
+#endif
     }
-    rand_seed = rand_seed * 1664525U + 1013904223U;
+    rand_seed = rand_seed * 1664525U + 1013904223U;   // LCG
     return rand_seed & RAND_MAX;
 }
 
 void srand(unsigned seed) {
-    rand_seed = seed;
-    rand_seed_set = 1;
+    rand_seed      = seed;
+    rand_seed_set  = 1;
 }
 
 

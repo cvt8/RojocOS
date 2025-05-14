@@ -1,6 +1,7 @@
 #include "fs.h"
 #include "kernel.h"
 #include "lib.h"
+#include "entropy.h"
 #include "k-malloc.h"
 
 // kernel.c
@@ -96,6 +97,8 @@ void kernel(void) {
     pageinfo_init();
     console_clear();
     timer_init(HZ);
+
+    request_user_entropy();   // collect user generated entropy at boot
 
     // nullptr is inaccessible even to the kernel
     virtual_memory_map(kernel_pagetable, (uintptr_t) 0, (uintptr_t) 0,
@@ -344,6 +347,10 @@ void exception(x86_64_registers* reg) {
         break;
     }
 
+    case INT_SYS_GETRANDOM:
+    current->p_registers.reg_rax = get_entropy_value();
+    break;
+
     case INT_SYS_PAGE_ALLOC: {
         uintptr_t vaddr = current->p_registers.reg_rdi;
         uintptr_t paddr = page_alloc(current->p_pid);
@@ -448,11 +455,15 @@ void exception(x86_64_registers* reg) {
         } else if (strcmp(path, "rand") == 0) {
             log_printf("run rand\n");
             program_number = 7;
+        } else if (strcmp(path, "entropy") == 0) {
+            log_printf("run entropy\n");
+            program_number = 8;        // make sure this matches ramimages[]
         } else {
             log_printf("command not found : %s\n", path);
             current->p_registers.reg_rax = -1;
             break;
         }
+
 
         log_printf("program_numer : %d\n", program_number);
 

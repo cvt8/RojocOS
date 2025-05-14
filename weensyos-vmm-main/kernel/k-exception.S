@@ -134,7 +134,7 @@ sys66_int_handler:
 
 sys67_int_handler:
         pushq $0
-        pushq $66
+        pushq $67
         jmp generic_exception_handler
 
 sys68_int_handler:
@@ -144,7 +144,7 @@ sys68_int_handler:
 
 sys69_int_handler:
         pushq $0
-        pushq $9
+        pushq $69
         jmp generic_exception_handler
 
 sys70_int_handler:

@@ -36,6 +36,12 @@ typedef long off_t;
 
 typedef int pid_t;                    // process IDs
 
+#ifndef __cplusplus
+typedef int bool;
+#define true 1
+#define false 0
+#endif
+
 void* memcpy(void* dst, const void* src, size_t n);
 void* memmove(void* dst, const void* src, size_t n);
 void* memset(void* s, int c, size_t n);
@@ -112,6 +118,7 @@ void panic(const char* format, ...) __attribute__((noinline, noreturn));
 #define INT_SYS_GETCWD          SYSCALL(17) // 79
 #define INT_SYS_CHDIR           SYSCALL(18) // 80
 #define INT_SYS_MKDIR           SYSCALL(19) // 83
+#define INT_SYS_GETRANDOM       SYSCALL(20) // 84
 
 
 #define INT_SYS_HELLO           SYSCALL(6)
