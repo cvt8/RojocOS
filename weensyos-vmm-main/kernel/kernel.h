@@ -9,12 +9,12 @@
 //
 //    Functions, constants, and definitions for the kernel.
 
-typedef enum pageowner {
-    PO_FREE = 0,                // this page is free
-    PO_RESERVED = -1,           // this page is reserved memory
-    PO_KERNEL = -2,             // this page is used by the kernel
-    PO_KERNEL_HEAP = -3         // this page is used by the kernel heap
-} pageowner_t;
+#define PO_FREE 0
+#define PO_RESERVED -1
+#define PO_KERNEL -2
+#define PO_KERNEL_HEAP -3
+
+typedef int pageowner_t;            // process IDs
 
 // Process state type
 typedef enum procstate {
