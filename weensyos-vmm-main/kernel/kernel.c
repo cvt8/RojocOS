@@ -107,7 +107,7 @@ void kernel(void) {
     // Init filesystem
 
 
-    fs_init(&fsdesc, fs_read_disk);
+    fs_init(&fsdesc, fs_read_disk, fs_write_disk);
 
     // Set up process descriptors
     memset(processes, 0, sizeof(processes));
