@@ -330,9 +330,36 @@ void exception(x86_64_registers* reg) {
         process_kill(current->p_pid);
         break;
 
+    // case INT_SYS_HELLO:
+    //     console_printf(CPOS(10, 10), 0xC000, "Hello, from Kernel");
+    //     break;
+
+    // DEBUT CHANGEMENT SYSCALL HELLO POUR TEST WRITEDISK ET WRITESECT
     case INT_SYS_HELLO:
-        console_printf(CPOS(10, 10), 0xC000, "Hello, from Kernel");
-        break;
+    console_printf(CPOS(10, 10), 0x0C00, "Hello, from Kernel");
+
+    /* ─── writesect()/writedisk() smoke test ─── */
+    {
+        static const char pattern[8] = "WS‑TEST";
+        uint8_t sector[SECTORSIZE];
+
+        /* 1. write “WS‑TEST” at LBA 300         */
+        memset(sector, 0, SECTORSIZE);
+        memcpy(sector, pattern, sizeof(pattern));
+        if (writesect((uintptr_t) sector, 300) == 0) {
+            /* 2. read it back into verify[]      */
+            uint8_t verify[SECTORSIZE];
+            if (readsect((uintptr_t) verify, 300) == 0 &&
+                memcmp(verify, pattern, sizeof(pattern)) == 0)
+                console_printf(CPOS(12, 10), 0x0200, "Disk write OK");
+            else
+                console_printf(CPOS(12, 10), 0x0400, "Disk verify FAIL");
+        } else {
+            console_printf(CPOS(12, 10), 0x0400, "writesect() ERR");
+        }
+    }
+    break;
+    // FIN CHANGEMENT SYSCALL HELLO POUR TEST WRITEDISK ET WRITESECT
 
     case INT_SYS_KEYBORD:
         current->p_registers.reg_rax = check_keyboard_pop();
