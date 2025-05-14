@@ -186,4 +186,6 @@ void printer_vprintf(printer* p, int color, const char* format, va_list val);
 
 int string_to_char(const char *str, int *dest);
 
+int atoi(const char *str);
+
 #endif /* !WEENSYOS_LIB_H */

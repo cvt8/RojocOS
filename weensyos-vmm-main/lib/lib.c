@@ -469,3 +469,52 @@ int string_to_char(const char *str, int *dest) {
 
     return 0;
 }
+
+int atoi(const char *str) {
+    if (*str == '\0') return -1;
+
+    int n = 0;
+    for (; *str; str++) {
+        int digit = 0;
+
+        switch (*str)
+        {
+        case '0':
+            digit = 0;
+            break;
+        case '1':
+            digit = 1;
+            break;
+        case '2':
+            digit = 2;
+            break;
+        case '3':
+            digit = 3;
+            break;
+        case '4':
+            digit = 4;
+            break;
+        case '5':
+            digit = 5;
+            break;
+        case '6':
+            digit = 6;
+            break;
+        case '7':
+            digit = 7;
+            break;
+        case '8':
+            digit = 8;
+            break;
+        case '9':
+            digit = 9;
+            break;
+        default:
+            return -1;
+        }
+
+        n = n * 10 + digit;
+    }
+
+    return 0;
+}
