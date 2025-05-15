@@ -10,8 +10,10 @@ void process_main(int argc, char* argv[]) {
 
     app_printf(0, "\n");
 
+    sys_hello();
 
-    app_printf(0, "%d\n ", rand());
+
+    //app_printf(0, "%d\n ", rand());
 
 
     sys_exit(0);

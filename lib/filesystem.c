@@ -7,11 +7,12 @@
 #define SIZE_TO_BLOCK(x) ((uint32_t) (((x) + BLOCK_SIZE - 1) / BLOCK_SIZE))
 
 
-struct fs_inode_entry {
+typedef struct fs_inode_entry {
+    uint8_t ref;
     uint64_t start_block;
     uint64_t block_count;
     unsigned char cipher_key[256];
-};
+} fs_inode_entry;
 
 #define NAME_SIZE 32
 #define MAX_CHILDREN 32
@@ -23,7 +24,7 @@ typedef struct fd_node_child {
 
 typedef struct fs_node {
     uint8_t used;
-    int value;
+    uint32_t value;
     int children_count;
     fd_node_child_t children[MAX_CHILDREN];
 } fs_node_t;
@@ -38,6 +39,38 @@ typedef struct fs_node {
 static const uint8_t ZERO = 0;
 static const uint8_t ONE = 1;
 
+
+int64_t search_available_inode(fs_descriptor *fsdesc) {
+    for (uint32_t i = 0; i < fsdesc->metadata.inode_count; i++) {
+        uint8_t used;
+        uint64_t addr = fsdesc->inode_table_offset + i*INODE_ENTRY_SIZE;
+        if (fsdesc->fsdr((uintptr_t) &used, addr, 1) < 0)
+            return -1;
+        
+        if (used == 0)
+            return i;
+    }
+
+    return -1;
+}
+
+int64_t fs_alloc_inode(fs_descriptor *fsdesc) {
+    int64_t r = search_available_inode(fsdesc);
+    if (r < 0)
+        return -1;
+    uint32_t inode = (uint32_t) r;
+
+    fs_inode_entry entry;
+    if (fsdesc->fsdr((uintptr_t) &entry, fsdesc->inode_table_offset + inode*INODE_ENTRY_SIZE, INODE_ENTRY_SIZE) < 0)
+        return -1;
+    
+    entry.ref += 1;
+
+    if (fsdesc->fsdw((uintptr_t) &entry, fsdesc->inode_table_offset + inode*INODE_ENTRY_SIZE, INODE_ENTRY_SIZE) < 0)
+        return -1;
+    
+    return inode;
+}
 
 
 int64_t search_free_blocks(fs_descriptor *fsdesc, uint32_t n) {
@@ -123,10 +156,13 @@ int fs_init(fs_descriptor *fsdesc, fs_disk_reader fsdr, fs_disk_writer fsdw) {
     fsdesc->fsdr = fsdr;
     fsdesc->fsdw = fsdw;
 
-    int r = fsdr((uintptr_t) &fsdesc->metadata, 0, METADATA_SIZE);
-    if (r < 0) {
-        return r;
+    if (fsdr((uintptr_t) &fsdesc->metadata, 0, METADATA_SIZE) < 0) {
+        return -1;
     }
+
+    fsdesc->metadata.block_count = 16;
+    fsdesc->metadata.inode_count = 16;
+    fsdesc->metadata.node_count = 16;
 
     fsdesc->inode_table_offset = METADATA_SIZE;
     fsdesc->block_usage_offset = fsdesc->inode_table_offset + fsdesc->metadata.inode_count * INODE_ENTRY_SIZE;
@@ -213,19 +249,19 @@ int follow_node(fs_descriptor *fsdesc, fs_node_t* src_node, const char *edge, fs
 }
 
 int search_node(fs_descriptor *fsdesc, const char *path, fs_node_t *node) {
-    if (path[0] != '\\')
+    if (path[0] != '/')
         return -1;
 
     if (fsdesc->fsdr((uintptr_t) node, fsdesc->tree_offset, NODE_SIZE) < 0)
         return -1;
 
     while (*path != '\0') {
-        if (*path == '\\')
+        if (*path == '/')
             path++;
         
         char name[NAME_SIZE];
         int i = 0;
-        while (*path != '\0' && *path != '\\') {
+        while (*path != '\0' && *path != '/') {
             name[i] = *path;
             i++;
 
@@ -243,7 +279,7 @@ int search_node(fs_descriptor *fsdesc, const char *path, fs_node_t *node) {
     return 0;
 }
 
-int fs_getattr(fs_descriptor *fsdesc, const char *path) {
+int64_t fs_getattr(fs_descriptor *fsdesc, const char *path) {
     fs_node_t node;
     if (search_node(fsdesc, path, &node) < 0)
         return -1;
@@ -254,6 +290,7 @@ int fs_getattr(fs_descriptor *fsdesc, const char *path) {
 int fs_readdir_init(fs_descriptor *fsdesc, const char *path, fs_dirreader *dr) {
     fs_node_t node;
     int64_t r = search_node(fsdesc, path, &node);
+
     if (r < 0)
         return -1;
     uint32_t node_index = (uint32_t) r;
@@ -278,7 +315,7 @@ int fs_readdir_next(fs_dirreader *dr, char *buffer) {
 
 
 int64_t search_available_node(fs_descriptor *fsdesc) {
-    for (uint32_t i = 0; i < fsdesc->metadata.node_count; i++) {
+    for (uint32_t i = 1; i < fsdesc->metadata.node_count; i++) { // 0 is root
         uint8_t used;
 
         if (fsdesc->fsdr((uintptr_t) &used, fsdesc->tree_usage_offset + i, 1) < 0)
@@ -292,9 +329,17 @@ int64_t search_available_node(fs_descriptor *fsdesc) {
 }
 
 
+int fs_test(fs_descriptor *fsdesc) {
+    fs_node_t node;
 
+    if (fsdesc->fsdr((uintptr_t) &node, fsdesc->tree_offset, NODE_SIZE) < 0) {
+        return -1;
+    }
 
-int fs_touch(fs_descriptor *fsdesc, const char *parent_path, const char *name, int value) {
+    return node.children_count;
+}
+
+int fs_touch(fs_descriptor *fsdesc, const char *parent_path, const char *name, uint32_t value) {
     /*int parent_path_size = 0;
     int name_size = 0;
     
@@ -320,32 +365,32 @@ int fs_touch(fs_descriptor *fsdesc, const char *parent_path, const char *name, i
     uint32_t parent_node_index = (uint32_t) r;
     
     if (node.children_count == MAX_CHILDREN)
-        return -1;
+        return -2;
 
     int i = 0;
-    while (node.children[i].index == 0) {
+    while (node.children[i].index != 0) {
         i += 1;
         
         if (i == MAX_CHILDREN)
-            return -1;
+            return -3;
     }
-
 
     r = search_available_node(fsdesc);
     if (r < 0)
-        return -1;
+        return -4;
     uint32_t child_node_index = (uint32_t) r;
 
 
     strcpy(node.children[i].name, name);
+    node.children_count += 1;
     node.children[i].index = child_node_index;
-    fsdesc->fsdw((uintptr_t) &node, fsdesc->tree_offset + parent_node_index, NODE_SIZE);
+    fsdesc->fsdw((uintptr_t) &node, fsdesc->tree_offset + parent_node_index * NODE_SIZE, NODE_SIZE);
 
     
     memset(&node, 0, NODE_SIZE);
     node.value = value;
     fsdesc->fsdw((uintptr_t) &ONE, fsdesc->tree_usage_offset + child_node_index, 1);
-    fsdesc->fsdw((uintptr_t) &node, fsdesc->tree_offset + child_node_index, NODE_SIZE);
+    fsdesc->fsdw((uintptr_t) &node, fsdesc->tree_offset + child_node_index * NODE_SIZE, NODE_SIZE);
 
     return 0;
 }

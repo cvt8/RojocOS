@@ -5,6 +5,8 @@
 
 void process_main() {
 
+    //app_printf(0, "%s\n", "hello");
+
     char buffer[64];
 
     int r = sys_listdir("/", buffer);

@@ -77,6 +77,30 @@ static inline ssize_t sys_read(int fd, void *buf, size_t count) {
     return result;
 }
 
+static inline ssize_t sys_write(int fd, const void *buf, size_t count) {
+    ssize_t result;
+    asm volatile ("int %1" : "=a" (result)
+                  : "i" (INT_SYS_WRITE), "D" /* %rdi */ (fd), "S" /* %rsi */ (buf), "d" /* %rdx */ (count)
+                  : "cc", "memory");
+    return result;
+}
+
+static inline int sys_mkdir(const char *path) {
+    int result;
+    asm volatile ("int %1" : "=a" (result)
+                  : "i" (INT_SYS_MKDIR), "D" /* %rdi */ (path)
+                  : "cc", "memory");
+    return result;
+}
+
+static inline int sys_touch(const char *path) {
+    int result;
+    asm volatile ("int %1" : "=a" (result)
+                  : "i" (INT_SYS_TOUCH), "D" /* %rdi */ (path)
+                  : "cc", "memory");
+    return result;
+}
+
 static inline int sys_listdir(const char *path, char *buffer) {
     int result;
     asm volatile ("int %1" : "=a" (result)

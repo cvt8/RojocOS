@@ -36,7 +36,7 @@ static unsigned ticks;          // # timer interrupts so far
 void schedule(void);
 void run(proc* p) __attribute__((noreturn));
 
-static int memshow_enabled = 1;
+static int memshow_enabled = 0;
 
 
 // PAGEINFO
@@ -104,7 +104,7 @@ void kernel(void) {
     console_clear();
     timer_init(HZ);
 
-    request_user_entropy();   // collect user generated entropy at boot
+    //request_user_entropy();   // collect user generated entropy at boot
 
     // nullptr is inaccessible even to the kernel
     virtual_memory_map(kernel_pagetable, (uintptr_t) 0, (uintptr_t) 0,
@@ -114,6 +114,10 @@ void kernel(void) {
 
 
     fs_init(&fsdesc, fs_read_disk, fs_write_disk);
+
+    log_printf("block_count : %d\n", fsdesc.metadata.block_count);
+    log_printf("inode_count : %d\n", fsdesc.metadata.inode_count);
+    log_printf("node_count : %d\n", fsdesc.metadata.node_count);
 
     // Set up process descriptors
     memset(processes, 0, sizeof(processes));
@@ -201,6 +205,8 @@ void process_setup(pid_t pid, int program_number, pid_t parent) {
     processes[pid].p_parent = parent;
     processes[pid].p_state = P_RUNNABLE;
     processes[pid].p_wait_pid = -1;
+    processes[pid].fd_max = 0;
+    processes[pid].fd_list = NULL;
     strcpy(processes[pid].p_cwd, "/");
 }
 
@@ -339,27 +345,17 @@ void exception(x86_64_registers* reg) {
     case INT_SYS_HELLO: {
         console_printf(CPOS(10, 10), 0x0C00, "Hello, from Kernel");
 
-        /* ─── writesect()/writedisk() smoke test ─── */
-    
-        /*#define SECTORSIZE 512
+        char buffer[17];
+        fs_read_disk((uintptr_t) buffer, 0, 16);
+        buffer[16] = '\0';
+        log_printf("buffer : %s\n", buffer);
 
-        static const char pattern[8] = "WS-TEST";
-        uint8_t sector[SECTORSIZE];
-
-        // 1. write “WS‑TEST” at LBA 300
-        memset(sector, 0, SECTORSIZE);
-        memcpy(sector, pattern, sizeof(pattern));
-        if (writesect((uintptr_t) sector, 300) == 0) {
-            // 2. read it back into verify[]
-            uint8_t verify[SECTORSIZE];
-            if (readsect((uintptr_t) verify, 300) == 0 &&
-                memcmp(verify, pattern, sizeof(pattern)) == 0)
-                console_printf(CPOS(12, 10), 0x0200, "Disk write OK");
-            else
-                console_printf(CPOS(12, 10), 0x0400, "Disk verify FAIL");
-        } else {
-            console_printf(CPOS(12, 10), 0x0400, "writesect() ERR");
-        }*/
+        
+        buffer[0] = 'M';
+        fs_write_disk((uintptr_t) buffer, 0, 16);
+        
+        fs_read_disk((uintptr_t) buffer, 0, 16);
+        log_printf("buffer : %s\n", buffer);
 
         break;
     }
@@ -369,18 +365,26 @@ void exception(x86_64_registers* reg) {
         break;
 
     case INT_SYS_OPEN: {
+        log_printf("proc %d: exception INT_SYS_OPEN (%d)\n", current->p_pid, reg->reg_intno);
+
         uintptr_t va = current->p_registers.reg_rdi;
         vamapping vam = virtual_memory_lookup(current->p_pagetable, va);
         char *path = (char *) vam.pa;
 
-        int inode = fs_getattr(&fsdesc, path);
-        if (inode <= 0) {
-            current->p_registers.reg_rax = inode;
+        log_printf("path : %s\n", path);
+
+        int64_t r = fs_getattr(&fsdesc, path);
+        if (r < 0) {
+            log_printf("getattr failed %d\n", r);
+            current->p_registers.reg_rax = -1;
             break;
         }
+        uint32_t inode = (uint32_t) r;
+        log_printf("inode : %d\n", inode);
 
         current->fd_max++;
         if (fdlist_add_entry(&current->fd_list, current->fd_max, inode) < 0) {
+            log_printf("fdlist_add_entry failed %d\n", inode);
             current->p_registers.reg_rax = -1;
             break;
         };
@@ -411,7 +415,10 @@ void exception(x86_64_registers* reg) {
     }
 
     case INT_SYS_READ: {
+        log_printf("proc %d: exception INT_SYS_READ (%d)\n", current->p_pid, reg->reg_intno);
+
         int fd = current->p_registers.reg_rdi;
+        log_printf("fd : %d\n", fd);
 
         uintptr_t va = current->p_registers.reg_rsi;
         vamapping vam = virtual_memory_lookup(current->p_pagetable, va);
@@ -429,8 +436,95 @@ void exception(x86_64_registers* reg) {
             break;
         }
 
+        log_printf("buf : %p\n", (void *) buf);
+
         entry->offset += r;
         current->p_registers.reg_rax = r;
+        break;
+    }
+
+    case INT_SYS_WRITE: {
+        log_printf("proc %d: exception INT_SYS_WRITE (%d)\n", current->p_pid, reg->reg_intno);
+
+        int fd = current->p_registers.reg_rdi;
+
+        uintptr_t va = current->p_registers.reg_rsi;
+        vamapping vam = virtual_memory_lookup(current->p_pagetable, va);
+        uintptr_t buf = vam.pa;
+
+        size_t size = current->p_registers.reg_rdx; // TODO: Max ssize_t / size_t
+        //log_printf("buf : %p\n", (void *) buf);
+        log_printf("size : %d\n", size);
+
+        proc_fdentry_t *entry = fdlist_search_entry(&current->fd_list, fd);
+        if (entry == NULL) {
+            log_printf("fd %d not found\n", fd);
+            current->p_registers.reg_rax = -1;
+            break;
+        }
+        log_printf("fd : %d, inode : %d, offset : %d\n", fd, entry->inode, entry->offset);
+
+        int r = fs_write(&fsdesc, entry->inode, (void *) buf, size, entry->offset);
+        if (r < 0) {
+            log_printf("write failed %d\n", r);
+            current->p_registers.reg_rax = r;
+            break;
+        }
+
+        entry->offset += size;
+
+        current->p_registers.reg_rax = size;
+        break;
+    }
+
+    case INT_SYS_MKDIR: {
+        log_printf("proc %d: exception INT_SYS_MKDIR (%d)\n", current->p_pid, reg->reg_intno);
+        
+        uintptr_t va = current->p_registers.reg_rdi;
+        vamapping vam = virtual_memory_lookup(current->p_pagetable, va);
+        char *path = (char *) vam.pa;
+
+        int r = fs_touch(&fsdesc, "/", path, 0);
+
+        if (r < 0) {
+            log_printf("mkdir failed %d\n", r);
+            current->p_registers.reg_rax = -1;
+            break;
+        }
+
+        log_printf("fs_test : %d\n", fs_test(&fsdesc));
+
+        current->p_registers.reg_rax = 0;
+        break;
+    }
+
+    case INT_SYS_TOUCH: {
+        log_printf("proc %d: exception INT_SYS_TOUCH (%d)\n", current->p_pid, reg->reg_intno);
+        
+        uintptr_t va = current->p_registers.reg_rdi;
+        vamapping vam = virtual_memory_lookup(current->p_pagetable, va);
+        char *path = (char *) vam.pa;
+
+        log_printf("path : %s\n", path);
+
+        int64_t r = fs_alloc_inode(&fsdesc);
+        if (r < 0) {
+            log_printf("alloc inode failed %d\n", r);
+            current->p_registers.reg_rax = -1;
+            break;
+        }
+        uint32_t inode = (uint32_t) r;
+
+        log_printf("inode : %d\n", inode);
+
+        int r1 = fs_touch(&fsdesc, "/", path, inode);
+        if (r1 < 0) {
+            log_printf("touch failed %d\n", r1);
+            current->p_registers.reg_rax = -1;
+            break;
+        }
+
+        current->p_registers.reg_rax = 0;
         break;
     }
 
@@ -453,6 +547,8 @@ void exception(x86_64_registers* reg) {
             break;
         }
 
+        log_printf("children_count : %d\n", children_count);
+
         for (int i = 0; i < children_count; i++) {
             char name[32]; // TODO: 32 -> NAME_SIZE
             if (fs_readdir_next(&dr, name) < 0) {
@@ -461,10 +557,16 @@ void exception(x86_64_registers* reg) {
                 break;
             }
 
-            buffer += strcmp(buffer, name);
+            for (int j = 0; j < 32 && name[j]; j++) {
+                *buffer = name[j];
+                buffer++;
+            }
+            
             *buffer = '\n';
             buffer++;
         }
+
+        log_printf("buffer : %s\n", (char *) vam.pa);
 
         *buffer = '\0';
 
@@ -799,6 +901,13 @@ void exception(x86_64_registers* reg) {
 
         current = parent;
 
+        break;
+    }
+
+    case INT_SYS_KILL: {
+        current->p_registers.reg_rax = 0;
+        pid_t pid = current->p_registers.reg_rdi;
+        process_kill(pid);
         break;
     }
 

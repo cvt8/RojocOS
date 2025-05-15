@@ -41,6 +41,7 @@ void process_main(int argc, char* argv[]) {
 
     if (argc == 2) {
         read_count = 1024;
+        argc++;
     } else {
         int r = string_to_char(argv[argc-1], &read_count);
         if (r < 0) usage();

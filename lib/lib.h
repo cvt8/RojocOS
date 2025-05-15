@@ -129,6 +129,7 @@ void panic(const char* format, ...) __attribute__((noinline, noreturn));
 #define INT_SYS_PAGE_ALLOC      SYSCALL(10)
 
 #define INT_SYS_LISTDIR         SYSCALL(21)
+#define INT_SYS_TOUCH           SYSCALL(22)
 
 
 

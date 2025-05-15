@@ -18,4 +18,8 @@ void process_main(int argc, char* argv[]) {
     if (argc <= 1) {
         usage();
     }
+
+    sys_touch(argv[1]);
+
+    sys_exit(0);
 }

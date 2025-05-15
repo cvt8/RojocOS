@@ -39,7 +39,7 @@ int fs_init(fs_descriptor *fsdesc, fs_disk_reader fsdr, fs_disk_writer fsdw);
 // return value is negative if an error occured
 // return value is 0 is it is a directory
 // return value is positive if it is a file, the value is the inode of the data
-int fs_getattr(fs_descriptor *fsdesc, const char *path);
+int64_t fs_getattr(fs_descriptor *fsdesc, const char *path);
 
 int fs_truncate(fs_descriptor *fsdesc, fs_ino ino, off_t size);
 
@@ -50,5 +50,10 @@ int fs_write(fs_descriptor *fsdesc, fs_ino ino, void *buf, size_t size, off_t of
 int fs_readdir_init(fs_descriptor *fsdesc, const char *path, fs_dirreader *dr);
 int fs_readdir_next(fs_dirreader *dr, char *buffer);
 
+int fs_touch(fs_descriptor *fsdesc, const char *parent_path, const char *name, uint32_t value);
+
+int fs_test(fs_descriptor *fsdesc);
+
+int64_t fs_alloc_inode(fs_descriptor *fsdesc);
 
 #endif
