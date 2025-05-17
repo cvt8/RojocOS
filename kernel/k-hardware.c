@@ -269,6 +269,7 @@ static x86_64_pagetable kernel_pagetables[5];
 x86_64_pagetable* kernel_pagetable;
 
 void virtual_memory_init(void) {
+    log_printf("kernel_pagetables = %p\n", (void*)kernel_pagetables);
     kernel_pagetable = &kernel_pagetables[0];
     memset(kernel_pagetables, 0, sizeof(kernel_pagetables));
     kernel_pagetables[0].entry[0] =

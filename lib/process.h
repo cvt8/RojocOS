@@ -53,6 +53,14 @@ static inline int sys_open(const char *pathname) {
     return result;
 }
 
+static inline int sys_remove(const char *pathname) {
+    int result;
+    asm volatile ("int %1" : "=a" (result)
+                  : "i" (INT_SYS_REMOVE), "D" (pathname)
+                  : "cc", "memory");
+    return result;
+}
+
 static inline int sys_keybord(void) {
     int result;
     asm volatile ("int %1" : "=a" (result)
@@ -208,5 +216,7 @@ char scan_char(void);
 void scan_line(char* dst, int length_max);
 
 char** split_string(char* str, char sep);
+
+__attribute__((noreturn)) void handle_error(int r);
 
 #endif

@@ -48,7 +48,7 @@ void process_main(int argc, char* argv[]) {
         if (read_count == 0) usage();
     }
 
-    app_printf(0, "read_count : %d\n", read_count);
+    //app_printf(0, "read_count : %d\n", read_count);
 
     for (int i = 1; i < argc-1; i++) {
         char *pathname = argv[i];

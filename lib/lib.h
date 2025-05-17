@@ -130,6 +130,7 @@ void panic(const char* format, ...) __attribute__((noinline, noreturn));
 
 #define INT_SYS_LISTDIR         SYSCALL(21)
 #define INT_SYS_TOUCH           SYSCALL(22)
+#define INT_SYS_REMOVE          SYSCALL(23)
 
 
 
@@ -189,5 +190,7 @@ void printer_vprintf(printer* p, int color, const char* format, va_list val);
 int string_to_char(const char *str, int *dest);
 
 int atoi(const char *str);
+
+void join_path(const char *path0, const char *path1, char *dst);
 
 #endif /* !WEENSYOS_LIB_H */

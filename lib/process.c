@@ -1,6 +1,6 @@
 #include "process.h"
 #include "lib-malloc.h"
-
+#include "errno.h"
 // app_printf
 //     A version of console_printf that picks a sensible color by process ID.
 
@@ -129,4 +129,24 @@ char** split_string(char* str, char sep) {
     }
 
     return part;
+}
+
+
+__attribute__((noreturn)) void handle_error(int r) {
+    switch (r) {
+        case ENOENT    :
+            app_printf(1, "Error: %s\n", "No such file or directory");
+            break;
+        case EIO:
+            app_printf(1, "Error: %s\n", "I/O error");
+            break;
+        case ENOTDIR:
+            app_printf(1, "Error: %s\n", "Not a directory");
+            break;
+        default:
+            app_printf(1, "Error %d: %s\n", r, "Unknown error");
+            break;
+    }
+
+    sys_exit(r);
 }

@@ -26,10 +26,10 @@ void process_main(int argc, char* argv[]) {
 
     int fd = sys_open(argv[1]);
     assert(fd >= 0);
-    app_printf(2, "%s opened -> %d\n", argv[1], fd);
+    //app_printf(2, "%s opened -> %d\n", argv[1], fd);
 
-    ssize_t r = sys_write(fd, buffer, TEXT_SIZE);
-    app_printf(2, "%s writed -> %d\n", argv[1], r);
+    //ssize_t r = sys_write(fd, buffer, TEXT_SIZE);
+    //app_printf(2, "%s writed -> %d\n", argv[1], r);
 
     sys_exit(0);
 }

@@ -23,14 +23,16 @@ extern uint8_t _binary_obj_p_ls_start[];
 extern uint8_t _binary_obj_p_ls_end[];
 extern uint8_t _binary_obj_p_mkdir_start[];
 extern uint8_t _binary_obj_p_mkdir_end[];
-extern uint8_t _binary_obj_p_rand_start[];
-extern uint8_t _binary_obj_p_rand_end[];
+//extern uint8_t _binary_obj_p_rand_start[];
+//extern uint8_t _binary_obj_p_rand_end[];
 extern uint8_t _binary_obj_p_entropy_start[];
 extern uint8_t _binary_obj_p_entropy_end[];
 extern uint8_t _binary_obj_p_plane_start[];
 extern uint8_t _binary_obj_p_plane_end[];
 extern uint8_t _binary_obj_p_touch_start[];
 extern uint8_t _binary_obj_p_touch_end[];
+extern uint8_t _binary_obj_p_rm_start[];
+extern uint8_t _binary_obj_p_rm_end[];
 // new for below
 
 struct ramimage {
@@ -44,7 +46,7 @@ struct ramimage {
     { _binary_obj_p_echo_start, _binary_obj_p_echo_end },
     { _binary_obj_p_ls_start, _binary_obj_p_ls_end },
     { _binary_obj_p_mkdir_start, _binary_obj_p_mkdir_end },
-    { _binary_obj_p_rand_start, _binary_obj_p_rand_end },
+    { _binary_obj_p_rm_start, _binary_obj_p_rm_end },
     { _binary_obj_p_entropy_start, _binary_obj_p_entropy_end },
     { _binary_obj_p_plane_start, _binary_obj_p_plane_end },
     { _binary_obj_p_touch_start, _binary_obj_p_touch_end }

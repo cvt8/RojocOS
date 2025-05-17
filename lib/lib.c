@@ -518,3 +518,130 @@ int atoi(const char *str) {
 
     return 0;
 }
+
+
+// Helper to add a component
+#define ADD_COMP(comp, len) do { \
+    if ((len) > 0) { \
+        components[ncomp++] = (comp); \
+    } \
+} while (0)
+
+// Helper to copy a component to dst
+void copy_comp(const char *start, const char *end, char **pdst) {
+    while (start < end) {
+        *(*pdst)++ = *start++;
+    }
+}
+
+
+void join_path(const char *abs_path, const char *path, char *dst) {
+    // If path is absolute, just copy it to dst (removing duplicate slashes, and trailing slash unless root)
+    if (path[0] == '/') {
+        const char *src = path;
+        char *d = dst;
+        // Always start with a single slash
+        *d++ = '/';
+        src++;
+        int last_was_slash = 1;
+        while (*src) {
+            if (*src == '/') {
+                // Skip consecutive slashes
+                while (*src == '/') src++;
+                if (*src == 0) break;
+                *d++ = '/';
+                last_was_slash = 1;
+            } else {
+                *d++ = *src++;
+                last_was_slash = 0;
+            }
+        }
+        // Remove trailing slash unless the path is just "/"
+        if (d > dst + 1 && *(d-1) == '/') {
+            d--;
+        }
+        *d = 0;
+        return;
+    }
+
+    // Otherwise, start with abs_path
+    const char *src = abs_path;
+    char *d = dst;
+    if (*src != '/') {
+        *d++ = '/';
+    }
+    while (*src) {
+        *d++ = *src++;
+    }
+    // Remove trailing slash (unless root)
+    if (d > dst + 1 && *(d-1) == '/') {
+        d--;
+    }
+    *d = 0;
+
+    // Now, process path components
+    char temp[512];
+    int tlen = 0;
+    // Copy dst to temp for easier manipulation
+    src = dst;
+    while (*src && tlen < (int)sizeof(temp)-1) {
+        temp[tlen++] = *src++;
+    }
+    temp[tlen] = 0;
+
+    // Now, process each component in path
+    src = path;
+    while (*src) {
+        // Skip slashes
+        while (*src == '/') src++;
+        if (!*src) break;
+
+        // Find end of component
+        const char *comp_start = src;
+        while (*src && *src != '/') src++;
+        const char *comp_end = src;
+
+        int comp_len = comp_end - comp_start;
+
+        // Get component string
+        if (comp_len == 1 && comp_start[0] == '.') {
+            // Ignore
+            continue;
+        } else if (comp_len == 2 && comp_start[0] == '.' && comp_start[1] == '.') {
+            // Go up one directory, unless at root
+            if (tlen > 1) {
+                // Remove trailing slash if any
+                if (temp[tlen-1] == '/') tlen--;
+                // Remove last component
+                while (tlen > 1 && temp[tlen-1] != '/') tlen--;
+                temp[tlen] = 0;
+            }
+        } else if (comp_len > 0) {
+            // Add slash if not at root
+            if (tlen == 0 || temp[tlen-1] != '/') {
+                if (tlen < (int)sizeof(temp)-1) temp[tlen++] = '/';
+            }
+            // Copy component
+            for (const char *p = comp_start; p < comp_end && tlen < (int)sizeof(temp)-1; ++p) {
+                temp[tlen++] = *p;
+            }
+            temp[tlen] = 0;
+        }
+    }
+
+    // If temp is empty, set to "/"
+    if (tlen == 0) {
+        temp[tlen++] = '/';
+        temp[tlen] = 0;
+    }
+
+    // Remove trailing slash unless the path is just "/"
+    if (tlen > 1 && temp[tlen-1] == '/') {
+        temp[--tlen] = 0;
+    }
+
+    // Copy temp to dst
+    for (int i = 0; i <= tlen; ++i) {
+        dst[i] = temp[i];
+    }
+}

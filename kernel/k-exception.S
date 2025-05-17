@@ -11,7 +11,7 @@
 
 .globl entry_from_boot
 entry_from_boot:
-        movq $0x80000, %rsp
+        movq $0xA0000, %rsp
         movq %rsp, %rbp
         pushq $0
         popfq  // clear all the flags

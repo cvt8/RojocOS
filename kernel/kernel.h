@@ -56,7 +56,7 @@ typedef struct proc {
 // Kernel start address
 #define KERNEL_START_ADDR       0x40000
 // Top of the kernel stack
-#define KERNEL_STACK_TOP        0x80000
+#define KERNEL_STACK_TOP        0xA0000
 
 // First application-accessible address
 #define PROC_START_ADDR         0x100000

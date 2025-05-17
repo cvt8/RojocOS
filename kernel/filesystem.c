@@ -1,4 +1,7 @@
+#include "errno.h"
 #include "filesystem.h"
+#include "string.h"
+#include "kernel.h"
 
 #define METADATA_SIZE sizeof(fs_metadata)
 #define BLOCK_SIZE 4096
@@ -233,53 +236,74 @@ int fs_write(fs_descriptor *fsdesc, fs_ino ino, void *buf, size_t size, off_t of
     return 0;
 }
 
-int follow_node(fs_descriptor *fsdesc, fs_node_t* src_node, const char *edge, fs_node_t* dst_node) {
+// Returns a negative value on error. On success, returns the index of the found node and copies it to *dst_node.
+// src_node can be dst_node
+int64_t follow_node(fs_descriptor *fsdesc, fs_node_t* src_node, const char *edge, fs_node_t* dst_node) {
+    log_printf("follow_node / src_node->children_count : %d\n", src_node->children_count);
+    log_printf("follow_node / edge : %s\n", edge);
+
+
     for (int i = 0; i < MAX_CHILDREN; i++) {
         if (strcmp(src_node->children[i].name, edge) == 0) {
-            uintptr_t node_addr = fsdesc->tree_offset + src_node->children[i].index * NODE_SIZE;
+            log_printf("follow_node / node name : %s\n", src_node->children[i].name);
+            log_printf("follow_node / node index : %d\n", src_node->children[i].index);
 
-            if (fsdesc->fsdr((uintptr_t) dst_node, node_addr, NODE_SIZE) < 0)
-                return -1;
+            uint32_t node_index = src_node->children[i].index;
+            uintptr_t node_addr = fsdesc->tree_offset + node_index * NODE_SIZE;
 
-            return 0;
+            int r = fsdesc->fsdr((uintptr_t) dst_node, node_addr, NODE_SIZE);
+            if (r < 0) return r;
+
+            return node_index;
         }
     }
 
-    return -1;
+    return -ENOENT;
 }
 
-int search_node(fs_descriptor *fsdesc, const char *path, fs_node_t *node) {
-    if (path[0] != '/')
-        return -1;
 
-    if (fsdesc->fsdr((uintptr_t) node, fsdesc->tree_offset, NODE_SIZE) < 0)
-        return -1;
+// Returns a negative value on error. On success, returns the index of the found node and copies it to *node.
+int64_t search_node(fs_descriptor *fsdesc, normpath path, fs_node_t *node) {
+    assert(path.str[0] == '/');
 
-    while (*path != '\0') {
-        if (*path == '/')
-            path++;
+    log_printf("search_node / path : %.*s\n", (int)path.len, path.str);
+
+    int64_t r = fsdesc->fsdr((uintptr_t) node, fsdesc->tree_offset, NODE_SIZE);
+    if (r < 0) return r;
+
+    uint32_t node_index = 0;
+
+    while (path.len > 0) {
+        if (path.str[0] == '/') {
+            path.str++;
+            path.len--;
+        }
         
         char name[NAME_SIZE];
         int i = 0;
-        while (*path != '\0' && *path != '/') {
-            name[i] = *path;
+        while (path.len > 0 && path.str[0] != '/') {
+            name[i] = path.str[0];
             i++;
 
             if (i == NAME_SIZE - 1)
                 return -1;
             
-            path++;
+            path.str++;
+            path.len--;
         }
+        
         name[i] = '\0';
 
-        if (follow_node(fsdesc, node, name, node) < 0)
-            return -1;
+        r = follow_node(fsdesc, node, name, node);
+        if (r < 0) return r;
+
+        node_index = (uint32_t) r;
     }
 
-    return 0;
+    return node_index;
 }
 
-int64_t fs_getattr(fs_descriptor *fsdesc, const char *path) {
+int64_t fs_getattr(fs_descriptor *fsdesc, normpath path) {
     fs_node_t node;
     if (search_node(fsdesc, path, &node) < 0)
         return -1;
@@ -287,13 +311,16 @@ int64_t fs_getattr(fs_descriptor *fsdesc, const char *path) {
     return node.value;
 }
 
-int fs_readdir_init(fs_descriptor *fsdesc, const char *path, fs_dirreader *dr) {
+int fs_readdir_init(fs_descriptor *fsdesc, normpath path, fs_dirreader *dr) {
+    
     fs_node_t node;
     int64_t r = search_node(fsdesc, path, &node);
-
-    if (r < 0)
-        return -1;
+    if (r < 0) return r;
     uint32_t node_index = (uint32_t) r;
+
+    
+    log_printf("fs_readdir_init / path.str(%d) : %.*s\n", (int)path.len, (int)path.len, path.str);
+    log_printf("fs_readdir_init / node : %d\n", node_index);
 
     dr->fsdesc = fsdesc;
     dr->node_index = node_index;
@@ -339,7 +366,7 @@ int fs_test(fs_descriptor *fsdesc) {
     return node.children_count;
 }
 
-int fs_touch(fs_descriptor *fsdesc, const char *parent_path, const char *name, uint32_t value) {
+int fs_touch(fs_descriptor *fsdesc, string path, uint32_t value) {
     /*int parent_path_size = 0;
     int name_size = 0;
     
@@ -356,13 +383,23 @@ int fs_touch(fs_descriptor *fsdesc, const char *parent_path, const char *name, u
     if (name_size == 0)
         return -1;*/
 
-    
+
+    string parent_path;
+    string child_name;
+    split_path(path, &parent_path, &child_name);
+
+    log_printf("fs_touch / parent_path : %.*s\n", (int)parent_path.len, parent_path.str);
+    log_printf("fs_touch / child_name : %.*s\n", (int)child_name.len, child_name.str);
+
+    assert(child_name.len < NAME_SIZE);
+
     fs_node_t node;
-    
     int64_t r = search_node(fsdesc, parent_path, &node);
     if (r < 0)
         return -1;
     uint32_t parent_node_index = (uint32_t) r;
+
+    log_printf("fs_touch / parent_node_index : %d\n", parent_node_index);
     
     if (node.children_count == MAX_CHILDREN)
         return -2;
@@ -380,8 +417,9 @@ int fs_touch(fs_descriptor *fsdesc, const char *parent_path, const char *name, u
         return -4;
     uint32_t child_node_index = (uint32_t) r;
 
-
-    strcpy(node.children[i].name, name);
+    log_printf("fs_touch / child_node_index : %d\n", child_node_index);
+    
+    copy_to_buffer(node.children[i].name, child_name);
     node.children_count += 1;
     node.children[i].index = child_node_index;
     fsdesc->fsdw((uintptr_t) &node, fsdesc->tree_offset + parent_node_index * NODE_SIZE, NODE_SIZE);
@@ -443,4 +481,50 @@ int fs_truncate(fs_descriptor *fsdesc, fs_ino ino, off_t size) {
     }
 
     return 0; // Success
+}
+
+int fs_remove(fs_descriptor *fsdesc, normpath path) {
+    normpath parent_path;
+    string child_name;
+    split_path(path, &parent_path, &child_name);
+
+    fs_node_t node;
+    int64_t r = search_node(fsdesc, parent_path, &node);
+    if (r < 0)
+        return -1;
+    uint32_t parent_node_index = (uint32_t) r;
+
+    uint32_t child_node_index = (uint32_t) r;
+
+    for (int i = 0; i < node.children_count; i++) {
+        if (node.children[i].index && equal_to_buffer(node.children[i].name, child_name)) {
+            child_node_index = node.children[i].index;
+
+            node.children[i].index = 0;
+            node.children[i].name[0] = '\0';
+            node.children[i].index = node.children[node.children_count-1].index;
+            memcpy(node.children[i].name, node.children[node.children_count-1].name, NAME_SIZE);
+            node.children_count -= 1;
+            break;
+        }
+    }
+
+    if (!child_node_index)
+        return -1;
+
+    if (fsdesc->fsdw((uintptr_t) &node, fsdesc->tree_offset + parent_node_index * NODE_SIZE, NODE_SIZE) < 0)
+        return -1;
+
+    memset(&node, 0, NODE_SIZE);
+    if (fsdesc->fsdr((uintptr_t) &node, fsdesc->tree_offset + child_node_index * NODE_SIZE, NODE_SIZE) < 0)
+        return -1;
+
+    if (fsdesc->fsdw((uintptr_t) &ZERO, fsdesc->tree_usage_offset + child_node_index, 1) < 0)
+        return -1;
+    
+    /*for (int i = 0; i < node.block_count; i++) {
+        fsdesc->fsdw((uintptr_t) &ZERO, fsdesc->data_offset + node.start_block + i * BLOCK_SIZE, BLOCK_SIZE);
+    }*/
+
+    return 0;
 }

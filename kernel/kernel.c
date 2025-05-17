@@ -2,7 +2,9 @@
 #include "kernel.h"
 #include "k-hardware.h"
 #include "lib.h"
+#include "errno.h"
 #include "entropy.h"
+#include "string.h"
 #include "k-malloc.h"
 #include "k-filedescriptor.h"
 
@@ -82,11 +84,28 @@ void memshow_virtual_animate(void);
 static fs_descriptor fsdesc;
 
 static int fs_read_disk(uintptr_t ptr, uint64_t start, size_t size) {
-    return readdisk(ptr, start + FILESYSTEM_DISK_OFFSET, size);
+    int r = readdisk(ptr, start + FILESYSTEM_DISK_OFFSET, size);
+    if (r < 0) return -EIO;
+    return 0;
 }
 
 static int fs_write_disk(uintptr_t ptr, uint64_t start, size_t size) {
-    return writedisk(ptr, start + FILESYSTEM_DISK_OFFSET, size);
+    int r = writedisk(ptr, start + FILESYSTEM_DISK_OFFSET, size);
+    if (r < 0) return -EIO;
+    return 0;
+}
+
+static normpath resolve_path(const char *path) {
+    log_printf("resolve_path / current->p_cwd : %s\n", current->p_cwd);
+    log_printf("resolve_path / path : %s\n", path);
+
+    char *buffer = (char *) kernel_malloc(256);
+    join_path(current->p_cwd, path, buffer);
+    normpath resolved_normpath = {
+        .str = buffer,
+        .len = strlen(buffer)
+    };
+    return resolved_normpath;
 }
 
 
@@ -125,6 +144,8 @@ void kernel(void) {
         processes[i].p_pid = i;
         processes[i].p_state = P_FREE;
     }
+
+    strcpy(processes[0].p_cwd, "/");
 
     //process_setup(6, 0); // p-allocator
     process_setup(5, 2, 0); // hello
@@ -207,7 +228,7 @@ void process_setup(pid_t pid, int program_number, pid_t parent) {
     processes[pid].p_wait_pid = -1;
     processes[pid].fd_max = 0;
     processes[pid].fd_list = NULL;
-    strcpy(processes[pid].p_cwd, "/");
+    strcpy(processes[pid].p_cwd, processes[parent].p_cwd);
 }
 
 void process_kill(pid_t pid) {
@@ -369,7 +390,7 @@ void exception(x86_64_registers* reg) {
 
         uintptr_t va = current->p_registers.reg_rdi;
         vamapping vam = virtual_memory_lookup(current->p_pagetable, va);
-        char *path = (char *) vam.pa;
+        normpath path = resolve_path((char *) vam.pa);
 
         log_printf("path : %s\n", path);
 
@@ -391,6 +412,24 @@ void exception(x86_64_registers* reg) {
 
         current->p_registers.reg_rax = inode;
         current->p_registers.reg_rax = current->fd_max;
+        break;
+    }
+
+    case INT_SYS_REMOVE: {
+        log_printf("proc %d: exception INT_SYS_REMOVE (%d)\n", current->p_pid, reg->reg_intno);
+
+        uintptr_t va = current->p_registers.reg_rdi;
+        vamapping vam = virtual_memory_lookup(current->p_pagetable, va);
+        normpath path = resolve_path((char *) vam.pa);
+
+        int r = fs_remove(&fsdesc, path);
+        if (r < 0) {
+            log_printf("remove failed %d\n", r);
+            current->p_registers.reg_rax = -1;
+            break;
+        }
+
+        current->p_registers.reg_rax = 0;
         break;
     }
 
@@ -482,9 +521,10 @@ void exception(x86_64_registers* reg) {
         
         uintptr_t va = current->p_registers.reg_rdi;
         vamapping vam = virtual_memory_lookup(current->p_pagetable, va);
-        char *path = (char *) vam.pa;
+        normpath path = resolve_path((char *) vam.pa);
 
-        int r = fs_touch(&fsdesc, "/", path, 0);
+        log_printf("mkdir path : %.*s\n", (int)path.len, path.str);
+        int r = fs_touch(&fsdesc, path, 0);
 
         if (r < 0) {
             log_printf("mkdir failed %d\n", r);
@@ -503,9 +543,7 @@ void exception(x86_64_registers* reg) {
         
         uintptr_t va = current->p_registers.reg_rdi;
         vamapping vam = virtual_memory_lookup(current->p_pagetable, va);
-        char *path = (char *) vam.pa;
-
-        log_printf("path : %s\n", path);
+        normpath path = resolve_path((char *) vam.pa);
 
         int64_t r = fs_alloc_inode(&fsdesc);
         if (r < 0) {
@@ -517,7 +555,7 @@ void exception(x86_64_registers* reg) {
 
         log_printf("inode : %d\n", inode);
 
-        int r1 = fs_touch(&fsdesc, "/", path, inode);
+        int r1 = fs_touch(&fsdesc, path, inode);
         if (r1 < 0) {
             log_printf("touch failed %d\n", r1);
             current->p_registers.reg_rax = -1;
@@ -533,7 +571,9 @@ void exception(x86_64_registers* reg) {
         
         uintptr_t va = current->p_registers.reg_rdi;
         vamapping vam = virtual_memory_lookup(current->p_pagetable, va);
-        char *path = (char *) vam.pa;
+        normpath path = resolve_path((char *) vam.pa);
+
+        log_printf("listdir path : %.*s\n", (int)path.len, path.str);
 
         va = current->p_registers.reg_rsi;
         vam = virtual_memory_lookup(current->p_pagetable, va);
@@ -543,7 +583,7 @@ void exception(x86_64_registers* reg) {
         int children_count = fs_readdir_init(&fsdesc, path, &dr);
         if (children_count < 0) {
             log_printf("proc %d: LISTDIR, readdir_init failed\n", current->p_pid);
-            current->p_registers.reg_rax = -1;
+            current->p_registers.reg_rax = children_count;
             break;
         }
 
@@ -551,9 +591,10 @@ void exception(x86_64_registers* reg) {
 
         for (int i = 0; i < children_count; i++) {
             char name[32]; // TODO: 32 -> NAME_SIZE
-            if (fs_readdir_next(&dr, name) < 0) {
+            int r = fs_readdir_next(&dr, name);
+            if (r < 0) {
                 log_printf("proc %d: LISTDIR, readdir_next failed\n", current->p_pid);
-                current->p_registers.reg_rax = -1;
+                current->p_registers.reg_rax = r;
                 break;
             }
 
@@ -641,8 +682,8 @@ void exception(x86_64_registers* reg) {
         } else if (strcmp(path, "mkdir") == 0) {
             log_printf("run mkdir\n");
             program_number = 6;
-        } else if (strcmp(path, "rand") == 0) {
-            log_printf("run rand\n");
+        } else if (strcmp(path, "rm") == 0) {
+            log_printf("run rm\n");
             program_number = 7;
         } else if (strcmp(path, "entropy") == 0) {
             log_printf("run entropy\n");
@@ -686,22 +727,15 @@ void exception(x86_64_registers* reg) {
         uintptr_t offset = (argc+1)*sizeof(char*);
 
         for (int i = 0; i < argc; i++) {
-            log_printf("A\n");
             ((uintptr_t*) pargs_pa)[i] = pargs_va+offset;
-            log_printf("B\n");
             vam = virtual_memory_lookup(current->p_pagetable, (uintptr_t) argv[i]);
-            log_printf("vam.pa : %p\n", vam.pa);
-            log_printf("argv[i] : %p\n", argv[i]);
             strcpy((char*) (pargs_pa+offset), (char*) vam.pa);
-            log_printf("D\n");
             offset += strlen((char*) vam.pa)+1;
         }
 
         ((char**) pargs_pa)[argc] = NULL;
 
         // Clear page table
-        log_printf("clear page table\n");
-
         for (int pn = 0; pn < NPAGETABLEENTRIES; pn++) {
             if (pageinfo[pn].owner == current->p_pid && PAGEADDRESS(pn) != pargs_pa) {
                 assert(pageinfo[pn].refcount == 1);
@@ -710,25 +744,12 @@ void exception(x86_64_registers* reg) {
             }
         }
 
-        
-        log_printf("%p\n", ((char**) pargs_pa)[0]);
-
-
         // Setup process
-
         process_setup(current->p_pid, program_number, current->p_parent);
 
-        log_printf("%p\n", ((char**) pargs_pa)[0]);
-
-
         // Setup arguments
-
         assert(virtual_memory_map(current->p_pagetable, pargs_va, pargs_pa,
                             PAGESIZE, PTE_P | PTE_W | PTE_U, NULL) == 0);
-
-        
-        log_printf("%p\n", ((char**) pargs_pa)[0]);
-
 
         current->p_registers.reg_rdi = argc;
         current->p_registers.reg_rsi = pargs_va;
@@ -790,27 +811,21 @@ void exception(x86_64_registers* reg) {
     }
 
     case INT_SYS_CHDIR: {
+        log_printf("proc %d: exception INT_SYS_CHDIR (%d)\n", current->p_pid, reg->reg_intno);
+
+
         uintptr_t va = current->p_registers.reg_rdi;
         vamapping vam = virtual_memory_lookup(current->p_pagetable, va);
         const char *path = (char *) vam.pa;
 
-        log_printf("chdir,path : %s\n", path);
+        log_printf("cwd : %s\n", current->p_cwd);
+        log_printf("path : %s\n", path);
 
-        if (path[0] == '\0') {
-            current->p_registers.reg_rax = -1;
-            break;
-        }
+        char absolute_path[256];
+        join_path(current->p_cwd, path, absolute_path);
+        log_printf("absolute path : %s\n", absolute_path);
 
-        if (path[0] == '/') {
-            //resolve-
-        }
-
-
-
-        strcpy(current->p_cwd, path);
-
-        log_printf("chdir,cwd : %s\n", current->p_cwd);
-
+        strcpy(current->p_cwd, absolute_path);
 
         current->p_registers.reg_rax = 0;
         break;
@@ -1214,4 +1229,6 @@ void memshow_virtual_animate(void) {
         memshow_virtual(processes[showing].p_pagetable, s);
     }
 }
+
+
 
