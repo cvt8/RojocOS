@@ -165,4 +165,4 @@ Pour tester automatiquement l'allocateur lors du démarrage du kernel :
 - **Erreurs de Programme** : Si `testmalloc` ne s'exécute pas, vérifiez les entrées dans `ramimages` et le mappage dans `INT_SYS_EXECV`.
 
 ## Conclusion
-Cette implémentation de `malloc` dans le kernel WeensyOS fournit un allocateur robuste et sécurisé, adapté aux systèmes embarqués. Les tests automatisés via `p-testmalloc` permettent de valider son fonctionnement, et les fonctionnalités de sécurité (effacement de la mémoire, alignement) le rendent compatible avec des exigences de chiffrement. Pour des améliorations futures, une intégration avec une API de chiffrement (par exemple, AES) pourrait être ajoutée si le kernel fournit des primitives cryptographiques.
+Cette implémentation de `malloc` dans le kernel WeensyOS fournit un allocateur robuste et sécurisé, adapté aux systèmes embarqués. Les tests automatisés via `p-testmalloc` permettent de valider son fonctionnement, et les fonctionnalités de sécurité (effacement de la mémoire, alignement) le rendent compatible avec des exigences de chiffrement.
