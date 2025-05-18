@@ -6,7 +6,7 @@ Examples:
 If the target doesn’t exist you’ll get “No such file or directory”
 
 mkdir
-Create a new directory (p-mkdir → sys_mkdir)
+Create a new directory
 Example mkdir photos
 Cannot create intermediate parents in one step (mkdir a/b fails); and shows an error if the name already exists.
 
