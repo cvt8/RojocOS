@@ -54,7 +54,7 @@ int fs_truncate(fs_descriptor *fsdesc, fs_ino ino, off_t size);
 
 ssize_t fs_read(fs_descriptor *fsdesc, fs_ino ino, void *buf, size_t size, off_t offset);
 
-ssize_t fs_write(fs_descriptor *fsdesc, fs_ino ino, const void *buf, size_t size, off_t offset);
+ssize_t fs_write(fs_descriptor *fsdesc, fs_ino ino, const void *buf, size_t size, uint64_t offset);
 
 int fs_readdir_init(fs_descriptor *fsdesc, normpath path, fs_dirreader *dr);
 int fs_readdir_next(fs_dirreader *dr, char *buffer);

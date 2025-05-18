@@ -1,6 +1,9 @@
 #ifndef WEENSYOS_LIB_H
 #define WEENSYOS_LIB_H
 
+#include "stdint.h"
+#include "stddef.h"
+
 // lib.h
 //
 //    Functions, constants, and definitions useful in both the kernel
@@ -20,24 +23,6 @@ typedef __builtin_va_list va_list;
 #define va_arg(val, type) __builtin_va_arg(val, type)
 #define va_end(val) __builtin_va_end(val)
 
-typedef signed char int8_t;
-typedef unsigned char uint8_t;
-typedef short int16_t;
-typedef unsigned short uint16_t;
-typedef int int32_t;
-typedef unsigned int uint32_t;
-typedef long int64_t;
-typedef unsigned long uint64_t;
-
-typedef long intptr_t;                // ints big enough to hold pointers
-typedef unsigned long uintptr_t;
-
-typedef __int128_t int128_t;
-typedef __uint128_t uint128_t;
-
-typedef unsigned long size_t;         // sizes and offsets
-typedef long ssize_t;
-typedef long off_t;
 
 typedef int pid_t;                    // process IDs
 

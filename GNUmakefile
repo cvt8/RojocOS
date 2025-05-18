@@ -43,8 +43,8 @@ endif
 
 BOOT_OBJS = $(OBJDIR)/bootentry.o $(OBJDIR)/boot.o
 
-KERNEL_C_OBJS = $(OBJDIR)/kernel.o $(OBJDIR)/k-hardware.o $(OBJDIR)/k-loader.o $(OBJDIR)/k-malloc.o $(OBJDIR)/k-filedescriptor.o $(OBJDIR)/entropy.o $(OBJDIR)/filesystem.o
-KERNEL_OBJS = $(OBJDIR)/k-exception.o $(KERNEL_C_OBJS) $(OBJDIR)/lib.o $(OBJDIR)/string.o
+KERNEL_C_OBJS = $(OBJDIR)/kernel.o $(OBJDIR)/k-hardware.o $(OBJDIR)/k-loader.o $(OBJDIR)/k-malloc.o $(OBJDIR)/k-filedescriptor.o $(OBJDIR)/k-entropy.o
+KERNEL_OBJS = $(OBJDIR)/k-exception.o $(KERNEL_C_OBJS) $(OBJDIR)/lib.o $(OBJDIR)/string.o $(OBJDIR)/aes.o $(OBJDIR)/filesystem.o
 KERNEL_LINKER_FILES = link/kernel.ld link/shared.ld
 
 PROCESS_BINARIES = $(OBJDIR)/p-allocator $(OBJDIR)/p-fork \
@@ -65,17 +65,23 @@ PROCESS_LINKER_FILES = link/process.ld link/shared.ld
 $(OBJDIR)/lib.o $(OBJDIR)/string.o: $(OBJDIR)/%.o: lib/%.c $(BUILDSTAMPS)
 	$(call compile,-c $< -o $@,COMPILE)
 
+$(OBJDIR)/aes.o: $(OBJDIR)/%.o: lib-aes/aes.c $(BUILDSTAMPS)
+	$(call compile,-Ilib -c $< -o $@,COMPILE)
+
+$(OBJDIR)/filesystem.o: $(OBJDIR)/%.o: lib-filesystem/filesystem.c $(BUILDSTAMPS)
+	$(call compile,-Ilib -Ilib-aes -Ikernel -c $< -o $@,COMPILE)
+
 $(OBJDIR)/bootentry.o: $(OBJDIR)/%.o: boot/%.S $(BUILDSTAMPS)
 	$(call compile,-c $< -o $@,ASSEMBLE)
 
 $(OBJDIR)/boot.o: $(OBJDIR)/%.o: boot/%.c $(BUILDSTAMPS)
-	$(call compile,-Ielf -Ilib -Os -fomit-frame-pointer -fno-inline -c $< -o $@,COMPILE)
+	$(call compile,-Ilib -Ilib-elf -Os -fomit-frame-pointer -fno-inline -c $< -o $@,COMPILE)
 
 $(OBJDIR)/k-exception.o: $(OBJDIR)/%.o: kernel/%.S $(BUILDSTAMPS)
 	$(call compile,-c $< -o $@,ASSEMBLE)
 
 $(KERNEL_C_OBJS): $(OBJDIR)/%.o: kernel/%.c $(BUILDSTAMPS) 
-	$(call compile,-Ielf -Ilib -DWEENSYOS_KERNEL -c $< -o $@,COMPILE)
+	$(call compile,-Ilib -Ilib-aes -Ilib-elf -Ilib-filesystem -DWEENSYOS_KERNEL -c $< -o $@,COMPILE)
 
 $(PROCESS_SRC_OBJS): $(OBJDIR)/%.o: processes/%.c $(BUILDSTAMPS)
 	$(call compile,-Ilib -O1 -DWEENSYOS_PROCESS -c $< -o $@,COMPILE)

@@ -3,7 +3,7 @@
 #include "k-hardware.h"
 #include "lib.h"
 #include "errno.h"
-#include "entropy.h"
+#include "k-entropy.h"
 #include "string.h"
 #include "k-malloc.h"
 #include "k-filedescriptor.h"
@@ -95,8 +95,8 @@ static int fs_write_disk(uintptr_t ptr, uint64_t start, size_t size) {
     return 0;
 }
 
-static void fs_random_generator(uint8_t *buffer, size_t size) {
-    for (int i = 0; i < size; i++) {
+static void fs_generate_random(uint8_t *buffer, size_t size) {
+    for (size_t i = 0; i < size; i++) {
         buffer[i] = (uint8_t) rand();
     }
 }
@@ -138,7 +138,7 @@ void kernel(void) {
     // Init filesystem
 
 
-    fs_init(&fsdesc, fs_read_disk, fs_write_disk, fs_random_generator);
+    fs_init(&fsdesc, fs_read_disk, fs_write_disk, fs_generate_random);
 
     log_printf("block_count : %d\n", fsdesc.metadata.block_count);
     log_printf("inode_count : %d\n", fsdesc.metadata.inode_count);

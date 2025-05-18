@@ -1,5 +1,5 @@
 // kernel/entropy.c — keyboard‑timing entropy collector
-#include "entropy.h"
+#include "k-entropy.h"
 #include "x86-64.h"
 #include "lib.h"
 

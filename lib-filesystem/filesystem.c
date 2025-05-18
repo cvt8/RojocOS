@@ -17,7 +17,7 @@ typedef struct fs_inode_entry {
     uint32_t start_block;
     uint32_t block_count;
     uint8_t cipher_key[FS_KEY_SIZE];
-    uint8_t cipher_iv[FS_IV_SIZE];
+    uint128_t cipher_iv;
 } fs_inode_entry;
 
 #define NAME_SIZE 32
@@ -56,14 +56,14 @@ int decrypt_block(fs_descriptor *fsdesc, uint32_t index, struct AES_ctx *ctx, ui
     return 0;
 }
 
-int encrypt_block(fs_descriptor *fsdesc, uint32_t index, struct AES_ctx *ctx, uint8_t *buffer) {
-    AES_CTR_xcrypt_buffer(ctx, buffer, BLOCK_SIZE);
+int encrypt_block(fs_descriptor *fsdesc, uint32_t index, struct AES_ctx *ctx, const void *buffer) {
+    AES_CTR_xcrypt_buffer(ctx, (uint8_t *) buffer, BLOCK_SIZE);
 
     uintptr_t addr = fsdesc->data_offset + index * BLOCK_SIZE;
     int r = fsdesc->fsdw((uintptr_t) buffer, addr, BLOCK_SIZE);
     if (r < 0) return r;
 
-    r = fsdesc->fsdw(&ONE, fsdesc->block_usage_offset + index, 1);
+    r = fsdesc->fsdw((uintptr_t) &ONE, fsdesc->block_usage_offset + index, 1);
     if (r < 0) return r;
 
     return 0;
@@ -129,10 +129,10 @@ int64_t search_free_blocks(fs_descriptor *fsdesc, uint32_t n) {
     return -ENOSPC;
 }
 
-int are_blocks_avaiblable(fs_descriptor *fsdesc, int start_block, int n) {
+int are_blocks_avaiblable(fs_descriptor *fsdesc, int start_block, uint32_t n) {
     uintptr_t addr = fsdesc->avail_block_table_offset;
 
-    for (int i = 0; i < n; i++) {
+    for (uint32_t i = 0; i < n; i++) {
         unsigned char dest;
 
         int r = fsdesc->fsdr((uintptr_t) &dest, addr + start_block + i, 1);
@@ -159,19 +159,19 @@ int set_availability(fs_descriptor *fsdesc, int block, const uint8_t *value) {
 }
 
 int copy_block(fs_descriptor *fsdesc,
-        uint32_t src_index, uint8_t *src_key, uint8_t *src_iv,
-        uint32_t dst_index, uint8_t *dst_key, uint8_t *dst_iv,
+        uint32_t src_index, uint8_t *src_key, uint128_t src_iv,
+        uint32_t dst_index, uint8_t *dst_key, uint128_t dst_iv,
         uint32_t n) {
 
     struct AES_ctx ctx_dec;
-    AES_init_ctx_iv(&ctx_dec, src_key, src_iv);
+    AES_init_ctx_iv(&ctx_dec, src_key, (uint8_t *) &src_iv);
 
     struct AES_ctx ctx_enc;
-    AES_init_ctx_iv(&ctx_enc, dst_key, dst_iv);
+    AES_init_ctx_iv(&ctx_enc, dst_key, (uint8_t *) &dst_iv);
 
     uint8_t buf[BLOCK_SIZE];
 
-    for (int i = 0; i < n; i++) {
+    for (uint32_t i = 0; i < n; i++) {
         int r = decrypt_block(fsdesc, src_index + i, &ctx_dec, buf);
         if (r < 0) return r;
         r = encrypt_block(fsdesc, dst_index + i, &ctx_enc, buf);
@@ -228,7 +228,7 @@ ssize_t fs_read(fs_descriptor *fsdesc, fs_ino ino, void *buf, size_t size, off_t
     return size;
 }
 
-ssize_t fs_write(fs_descriptor *fsdesc, fs_ino ino, const void *buf, size_t size, off_t offset) {
+ssize_t fs_write(fs_descriptor *fsdesc, fs_ino ino, const void *buf, size_t size, uint64_t offset) {
     if (size > FS_IO_MAX_SIZE)
         return -EINVAL;
 
@@ -254,7 +254,8 @@ ssize_t fs_write(fs_descriptor *fsdesc, fs_ino ino, const void *buf, size_t size
     if (offset % BLOCK_SIZE != 0) {
         // If the offset is not a multiple of the block size, we need to handle the partial block
         struct AES_ctx ctx;
-        AES_init_ctx_iv(&ctx, entry.cipher_key, entry.cipher_iv); //TODO: IV
+        uint128_t iv = entry.cipher_iv + offset / BLOCK_SIZE;
+        AES_init_ctx_iv(&ctx, entry.cipher_key, (uint8_t *) &iv);
         r = decrypt_block(fsdesc, entry.start_block + offset / BLOCK_SIZE, &ctx, partial_block);
         if (r < 0) return r;
 
@@ -268,9 +269,9 @@ ssize_t fs_write(fs_descriptor *fsdesc, fs_ino ino, const void *buf, size_t size
 
         uint32_t new_start_block = (uint32_t) r;
         uint8_t dst_key[FS_KEY_SIZE];
-        uint8_t dst_iv[FS_IV_SIZE];
+        uint128_t dst_iv;
         fsdesc->fsrng(dst_key, FS_KEY_SIZE);
-        fsdesc->fsrng(dst_iv, FS_IV_SIZE);
+        fsdesc->fsrng((uint8_t *) &dst_iv, FS_IV_SIZE);
 
         copy_block(fsdesc,
             entry.start_block, entry.cipher_key, entry.cipher_iv,
@@ -279,11 +280,12 @@ ssize_t fs_write(fs_descriptor *fsdesc, fs_ino ino, const void *buf, size_t size
 
         entry.start_block = new_start_block;
         memcpy(entry.cipher_key, dst_key, FS_KEY_SIZE);
-        memcpy(entry.cipher_iv, dst_iv, FS_IV_SIZE);
+        memcpy(&entry.cipher_iv, &dst_iv, FS_IV_SIZE);
     }
 
     struct AES_ctx ctx;
-    AES_init_ctx_iv(&ctx, entry.cipher_key, entry.cipher_iv + offset / BLOCK_SIZE); //TODO: IV
+    uint128_t iv = entry.cipher_iv + offset / BLOCK_SIZE;
+    AES_init_ctx_iv(&ctx, entry.cipher_key, (uint8_t *) &iv);
     
     // Handle partial block
     if (offset % BLOCK_SIZE != 0) {
@@ -296,7 +298,7 @@ ssize_t fs_write(fs_descriptor *fsdesc, fs_ino ino, const void *buf, size_t size
         int final_blocks_index = entry.start_block + SIZE_TO_BLOCK(offset);
         uintptr_t final_blocks_addr = fsdesc->data_offset + final_blocks_index * BLOCK_SIZE;
 
-        for (int i = 0; i < size - (BLOCK_SIZE - offset % BLOCK_SIZE); i++) {
+        for (uint32_t i = 0; i < size - (BLOCK_SIZE - offset % BLOCK_SIZE); i++) {
             encrypt_block(fsdesc, final_blocks_index + i, &ctx, buf);
             buf += BLOCK_SIZE;
         }
@@ -309,7 +311,7 @@ ssize_t fs_write(fs_descriptor *fsdesc, fs_ino ino, const void *buf, size_t size
     if (r < 0) return r;
 
     if (aba == 0) {
-        for (int i = 0; i < total_block - new_block; i++) {
+        for (uint32_t i = 0; i < total_block - new_block; i++) {
             r = set_availability(fsdesc, entry.start_block + i, &ZERO);
             if (r < 0) return r;
         }
