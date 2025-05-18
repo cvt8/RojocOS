@@ -18,9 +18,9 @@ void app_printf(int colorid, const char* format, ...) {
     cursorpos = console_vprintf(cursorpos, color, format, val);
     va_end(val);
 
-    if (CROW(cursorpos) >= 23) {
+    /*if (CROW(cursorpos) >= 23) {
         cursorpos = CPOS(0, 0);
-    }
+    }*/
 }
 
 

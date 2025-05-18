@@ -338,12 +338,12 @@ typedef struct console_printer {
 
 static void console_putc(printer* p, unsigned char c, int color) {
     console_printer* cp = (console_printer*) p;
-    if (cp->cursor >= console + CONSOLE_ROWS * CONSOLE_COLUMNS) {
+    /*if (cp->cursor >= console + CONSOLE_ROWS * CONSOLE_COLUMNS) {
         cp->cursor = console;
-    }
+    }*/
     if (c == '\n') {
-        int pos = (cp->cursor - console) % 80;
-        for (; pos != 80; pos++) {
+        int pos = (cp->cursor - console) % CONSOLE_COLUMNS;
+        for (; pos != CONSOLE_COLUMNS; pos++) {
             *cp->cursor++ = ' ' | color;
         }
     } else if (c == '\b') {
@@ -352,6 +352,22 @@ static void console_putc(printer* p, unsigned char c, int color) {
         }
     } else {
         *cp->cursor++ = c | color;
+    }
+
+    const int MAX_ROWS = CONSOLE_ROWS - 2;
+
+    if (cp->cursor == console + MAX_ROWS * CONSOLE_COLUMNS) {
+        // Move all characters up by one row, forgetting the first row
+        for (int i = 0; i < (MAX_ROWS - 1) * CONSOLE_COLUMNS; ++i) {
+            console[i] = console[i + CONSOLE_COLUMNS];
+        }
+
+        // Fill last column with space
+        for (int i = (MAX_ROWS - 1) * CONSOLE_COLUMNS; i < MAX_ROWS * CONSOLE_COLUMNS; ++i) {
+            console[i] = ' ' | color;
+        }
+
+        cp->cursor -= CONSOLE_COLUMNS;
     }
 }
 

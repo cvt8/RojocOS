@@ -6,6 +6,8 @@ void process_main(int argc, char* argv[]) {
         app_printf(0, "%s ", argv[i]);
     }
 
+    assert(0);
+
     app_printf(0, "\n");
     sys_exit(0);
 }
