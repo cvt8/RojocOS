@@ -1,5 +1,5 @@
 # rojocOS
-*A tiny x86‑64 teaching operating system extended with an encrypted filesystem, secure heap allocator, and user‑supplied entropy pool.*
+*A tiny x86‑64 operating system extended with an encrypted filesystem, secure heap allocator, and user‑supplied entropy pool.*
 
 **Authors** · [Romain de Coudenhove](mailto:romain.de.coudenhove@ens.psl.eu) · [Johan Utterström](mailto:johan.utterstrom@ens.psl.eu) · [Constantin Vaillant‑Tenzer](mailto:constantin.tenzer@ens.psl.eu)
 
