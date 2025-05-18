@@ -74,7 +74,7 @@ static void refresh_entropy(void) {
     cursorpos = saved_cursor;
 }
 
-// public interface
+
 unsigned get_entropy_value(void) {
     if (!entropy_initialized)
         request_user_entropy();

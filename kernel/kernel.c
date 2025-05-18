@@ -97,7 +97,7 @@ static int fs_write_disk(uintptr_t ptr, uint64_t start, size_t size) {
 
 static void fs_generate_random(uint8_t *buffer, size_t size) {
     for (size_t i = 0; i < size; i++) {
-        buffer[i] = (uint8_t) rand();
+        buffer[i] = (uint8_t) get_entropy_value();
     }
 }
 

@@ -4,11 +4,6 @@
 **Authors** · [Romain de Coudenhove](mailto:romain.de.coudenhove@ens.psl.eu) · [Johan Utterström](mailto:johan.utterstrom@ens.psl.eu) · [Constantin Vaillant‑Tenzer](mailto:constantin.tenzer@ens.psl.eu)
 
 
-We used, as a base code, Eddie Kohler's C version of WeensyOS forked from [Harvard CS61 2017 
-pset4](https://github.com/cs61/cs61-psets-f17) with updates merged
-from [Harvard CS61 2023 pset3](https://github.com/cs61/cs61-f23-psets).
-
-
 ## Features
 
 | Area              | What we added                                                                                        | Why it matters                                                        |
@@ -16,8 +11,7 @@ from [Harvard CS61 2023 pset3](https://github.com/cs61/cs61-f23-psets).
 | **Filesystem**    | *Tree‑based layout* (32 children/node), **AES‑256 per‑file encryption**, constant‑time secure‑delete | Instant disc encryption demo; safe removal of secrets                 |
 | **Randomness**    | 128‑bit entropy pool mixed from keystroke timing + TSC; exposed via `sys_getrandom`                  | Deterministic builds become *optional*; keys seeded with user entropy |
 | **Kernel heap**   | Tiny first‑fit allocator with 16‑byte alignment and zero‑on‑free                                     | Prevents after‑free data leaks; ready for SIMD/AES buffers            |
-| **Shell**         | Minimal Bourne‑like shell with familiar commands (`ls`, `cat`, `mkdir`, …)                           | No need to rebuild images to test the OS                              |
-| **Teaching size** | < 4 kLoC kernel, < 1 kLoC libc & progs                                                               | Fits in a semester project                                            |
+| **Shell**         | Minimal Bourne‑like shell with familiar commands (`ls`, `cat`, `mkdir`, …)                           | |
 
 ---
 
@@ -42,12 +36,6 @@ There are several ways to run the OS.
 
     Build the OS and run QEMU in the current terminal window. Press
     Control-C in the terminal to exit the OS.
-
-*   `make STOP=1 run-console-gdb`
-
-    Build the OS, run QEMU in the current terminal window, and wait for the 
-    debugger to connect. Start `gdb` and type `source weensyos.gdb` to 
-    connect.
 
 In all of these run modes, QEMU also creates a file named `log.txt`.
 The code we hand out doesn't actually log anything yet, but you may
@@ -107,7 +95,6 @@ Finally, run `make clean` to clean up your directory.
 | File                              | Description                                                                       |
 | --------------------------------- | --------------------------------------------------------------------------------- |
 | `lib.c` / `lib.h`                 | Misc helpers used by both kernel and user code (`console_printf`, `panic`, etc.). |
-| `string.c` / `string.h`           | `memcpy`, `strcmp`, `strlen`, etc.—no libc dependency.                            |
 | `lib‑malloc.c` / `lib‑malloc.h`   | *User‑space* bump‑pointer allocator (separate from kernel allocator).             |
 | `process.c` / `process.h`         | Thin wrapper used by user programs for `fork`, `execv`, `wait`, and exit status.  |
 | `x86‑64.h`                        | Inline assembly wrappers for key x86‑64 instructions and control registers.       |
@@ -119,8 +106,8 @@ Finally, run `make clean` to clean up your directory.
 
 | File    | Description                                                                       |
 | ------- | --------------------------------------------------------------------------------- |
-| `aes.c` | 700‑line AES‑256 implementation in C (encrypt/decrypt, key schedule, CBC helper). |
-| `aes.h` | API header (block + CBC encrypt/decrypt functions).                               |
+| `aes.c` | AES  implementation in C                                                          |
+| `aes.h` | API header                                                                        |
 
 ---
 
@@ -177,22 +164,7 @@ Finally, run `make clean` to clean up your directory.
 
 The main output of the build process is a disk image, `weensyos.img`.
 QEMU "boots" off this disk image, but it could also boot on real
-hardware! The build process also produces other files that you can
-look at and puts them in the `obj/` directory.
-
-*   `obj/kernel.asm`
-
-    This file is the output of `objdump -S` on the kernel. Use it to see
-    the kernel's assembly code.
-
-*   `obj/kernel.sym`
-
-    This smaller file just lists all the kernel's symbols (i.e.,
-    variable names).
-
-*   `obj/p-allocator.asm`, `obj/p-allocator.sym`, ...
-
-    Similar files are generated for process code.
+hardware!
 
 ## Available commands on the OS
 
@@ -201,12 +173,11 @@ Here is a list of the commands that you can use on the OS.
 
 | Program        | Description                                             |
 | -------------- | ------------------------------------------------------- |
-| **shell**      | Minimal bourne‑like shell (built‑in `cd`, `exit`).      |
 | **ls**         | List directory entries.                                 |
 | **cat**        | Dump file to console.                                   |
 | **touch**      | Create empty file (allocates inode + key).              |
 | **mkdir**      | Create directory.                                       |
-| **rm**         | Securely delete file (`unlink`).                        |
+| **rm**         | Securely delete file                                    |
 | **plane**      | Tiny fullscreen text editor (demo of read/write loop).  |
 | **testmalloc** | Runs allocator stress tests.                            |
 | **entropy**    | Prints 32 random bytes, optionally forces pool refresh. |
@@ -222,10 +193,3 @@ as swapping Control and Caps Lock).
 
 If Control-C still doesn't work on your QEMU, forcibly close it by
 running `make kill`.
-
-## References
-
-* M. Sabt, M. Achemlal, A. Bouabdallah, “Trusted Execution Environment: What it is, and what it is not”, *IEEE TrustCom*, 2015.
-* [Harvard CS61 WeensyOS](https://github.com/cs61/cs61-psets-f17)
-* [Trusted Execution Environment ‑ Wikipedia](https://en.wikipedia.org/wiki/Trusted_execution_environment)
-* [OS dev wiki](https://wiki.osdev.org)

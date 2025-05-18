@@ -112,8 +112,9 @@ $(OBJDIR)/bootsector: $(BOOT_OBJS) link/boot.ld link/shared.ld
 $(OBJDIR)/mkbootdisk: build/mkbootdisk.c $(BUILDSTAMPS)
 	$(call run,$(HOSTCC) -I. -o $(OBJDIR)/mkbootdisk,HOSTCOMPILE,build/mkbootdisk.c)
 
-weensyos.img: $(OBJDIR)/mkbootdisk $(OBJDIR)/bootsector $(OBJDIR)/kernel data.txt
-	$(call run,$(OBJDIR)/mkbootdisk $(OBJDIR)/bootsector $(OBJDIR)/kernel @1024 data.txt > $@,CREATE $@)
+weensyos.img: $(OBJDIR)/mkbootdisk $(OBJDIR)/bootsector $(OBJDIR)/kernel
+	$(call run,dd if=/dev/zero of=$(OBJDIR)/filesystem.img bs=1024 count=1024)
+	$(call run,$(OBJDIR)/mkbootdisk $(OBJDIR)/bootsector $(OBJDIR)/kernel @1024 $(OBJDIR)/filesystem.img > $@,CREATE $@)
 
 
 run-%: run-qemu-%
