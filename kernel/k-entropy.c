@@ -34,8 +34,8 @@ void request_user_entropy(void) {
     entropy_usage_counter = 0;
 
     console_printf(CPOS(8,0),0x0F00,"Done! Continuing...");
-    uint64_t until = read_cycle_counter() + 2ULL*200000000; // ≈2 s
-    while (read_cycle_counter() < until) { /* spin */ }
+    //uint64_t until = read_cycle_counter() + 2ULL*200000000; // ≈2 s
+    //while (read_cycle_counter() < until) { /* spin */ }
 
     console_clear();
 }

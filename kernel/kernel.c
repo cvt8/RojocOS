@@ -129,7 +129,7 @@ void kernel(void) {
     console_clear();
     timer_init(HZ);
 
-    //request_user_entropy();   // collect user generated entropy at boot
+    request_user_entropy();   // collect user generated entropy at boot
 
     // nullptr is inaccessible even to the kernel
     virtual_memory_map(kernel_pagetable, (uintptr_t) 0, (uintptr_t) 0,
