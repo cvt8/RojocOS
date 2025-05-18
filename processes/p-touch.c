@@ -15,11 +15,10 @@ void __attribute__((noreturn)) usage(void) {
 
 
 void process_main(int argc, char* argv[]) {
-    if (argc <= 1) {
-        usage();
-    }
+    if (argc <= 1) usage();
 
-    sys_touch(argv[1]);
+    int r = sys_touch(argv[1]);
+    if (r < 0) handle_error(-r);
 
     sys_exit(0);
 }

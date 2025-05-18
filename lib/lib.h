@@ -12,6 +12,8 @@
 // C library subset
 
 #define NULL ((void*) 0)
+#define INT_MAX 0x7FFFFFFF
+#define INT64_MAX 0x7FFFFFFFFFFFFFFF
 
 typedef __builtin_va_list va_list;
 #define va_start(val, last) __builtin_va_start(val, last)
@@ -29,6 +31,9 @@ typedef unsigned long uint64_t;
 
 typedef long intptr_t;                // ints big enough to hold pointers
 typedef unsigned long uintptr_t;
+
+typedef __int128_t int128_t;
+typedef __uint128_t uint128_t;
 
 typedef unsigned long size_t;         // sizes and offsets
 typedef long ssize_t;

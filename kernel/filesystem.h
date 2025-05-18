@@ -1,13 +1,18 @@
-#ifndef WEENSYOS_FS_H
-#define WEENSYOS_FS_H
+#ifndef __FILESYSTEM_H__
+#define __FILESYSTEM_H__
 
 #include "lib.h"
 #include "string.h"
+
+#define FS_IO_MAX_SIZE INT64_MAX
+#define FS_KEY_SIZE 256
+#define FS_IV_SIZE 16
 
 typedef unsigned int fs_ino;
 
 typedef int (*fs_disk_reader)(uintptr_t ptr, uint64_t start, size_t size);
 typedef int (*fs_disk_writer)(uintptr_t ptr, uint64_t start, size_t size);
+typedef void (*fs_random_generator)(uint8_t *buffer, size_t size);
 
 typedef struct fs_metadata {
     uint32_t inode_count; /* data index */
@@ -18,7 +23,10 @@ typedef struct fs_metadata {
 typedef struct fs_descriptor {
     fs_disk_reader fsdr;
     fs_disk_writer fsdw;
+    fs_random_generator fsrng;
+
     fs_metadata metadata;
+    
     uintptr_t avail_block_table_offset;
     uintptr_t inode_table_offset;
     uintptr_t block_usage_offset;
@@ -35,7 +43,7 @@ typedef struct {
 } fs_dirreader;
  
 
-int fs_init(fs_descriptor *fsdesc, fs_disk_reader fsdr, fs_disk_writer fsdw);
+int fs_init(fs_descriptor *fsdesc, fs_disk_reader fsdr, fs_disk_writer fsdw, fs_random_generator fsrng);
 
 // return value is negative if an error occured
 // return value is 0 is it is a directory
@@ -44,9 +52,9 @@ int64_t fs_getattr(fs_descriptor *fsdesc, normpath path);
 
 int fs_truncate(fs_descriptor *fsdesc, fs_ino ino, off_t size);
 
-int fs_read(fs_descriptor *fsdesc, fs_ino ino, void *buf, size_t size, off_t offset);
+ssize_t fs_read(fs_descriptor *fsdesc, fs_ino ino, void *buf, size_t size, off_t offset);
 
-int fs_write(fs_descriptor *fsdesc, fs_ino ino, void *buf, size_t size, off_t offset);
+ssize_t fs_write(fs_descriptor *fsdesc, fs_ino ino, const void *buf, size_t size, off_t offset);
 
 int fs_readdir_init(fs_descriptor *fsdesc, normpath path, fs_dirreader *dr);
 int fs_readdir_next(fs_dirreader *dr, char *buffer);

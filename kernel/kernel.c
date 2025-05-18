@@ -95,6 +95,12 @@ static int fs_write_disk(uintptr_t ptr, uint64_t start, size_t size) {
     return 0;
 }
 
+static void fs_random_generator(uint8_t *buffer, size_t size) {
+    for (int i = 0; i < size; i++) {
+        buffer[i] = (uint8_t) rand();
+    }
+}
+
 static normpath resolve_path(const char *path) {
     log_printf("resolve_path / current->p_cwd : %s\n", current->p_cwd);
     log_printf("resolve_path / path : %s\n", path);
@@ -132,7 +138,7 @@ void kernel(void) {
     // Init filesystem
 
 
-    fs_init(&fsdesc, fs_read_disk, fs_write_disk);
+    fs_init(&fsdesc, fs_read_disk, fs_write_disk, fs_random_generator);
 
     log_printf("block_count : %d\n", fsdesc.metadata.block_count);
     log_printf("inode_count : %d\n", fsdesc.metadata.inode_count);
@@ -397,18 +403,24 @@ void exception(x86_64_registers* reg) {
         int64_t r = fs_getattr(&fsdesc, path);
         if (r < 0) {
             log_printf("getattr failed %d\n", r);
-            current->p_registers.reg_rax = -1;
+            current->p_registers.reg_rax = r;
             break;
         }
         uint32_t inode = (uint32_t) r;
         log_printf("inode : %d\n", inode);
 
         current->fd_max++;
-        if (fdlist_add_entry(&current->fd_list, current->fd_max, inode) < 0) {
+        r = fdlist_add_entry(&current->fd_list, current->fd_max, inode);
+        if (r < 0) {
             log_printf("fdlist_add_entry failed %d\n", inode);
-            current->p_registers.reg_rax = -1;
+            current->p_registers.reg_rax = r;
             break;
         };
+
+
+        // TODO: test
+        //proc_fdentry_t *entry = fdlist_search_entry(&current->fd_list, current->fd_max);
+        //log_printf("entry : %d\n", entry->inode);
 
         current->p_registers.reg_rax = inode;
         current->p_registers.reg_rax = current->fd_max;
@@ -464,10 +476,13 @@ void exception(x86_64_registers* reg) {
         uintptr_t buf = vam.pa;
 
         size_t size = current->p_registers.reg_rdx; // TODO: Max ssize_t / size_t
+        log_printf("size : %d\n", size);
 
         proc_fdentry_t *entry = fdlist_search_entry(&current->fd_list, fd);
+        log_printf("entry : %d\n", entry->inode);
+        log_printf("offset : %d\n", entry->offset);
 
-        // check if size available
+        // TODO: check if size available
 
         int r = fs_read(&fsdesc, entry->inode, (void *) buf, size, entry->offset);
         if (r < 0) {
@@ -475,7 +490,7 @@ void exception(x86_64_registers* reg) {
             break;
         }
 
-        log_printf("buf : %p\n", (void *) buf);
+        log_printf("read %d bytes\n", r);
 
         entry->offset += r;
         current->p_registers.reg_rax = r;
@@ -528,11 +543,9 @@ void exception(x86_64_registers* reg) {
 
         if (r < 0) {
             log_printf("mkdir failed %d\n", r);
-            current->p_registers.reg_rax = -1;
+            current->p_registers.reg_rax = r;
             break;
         }
-
-        log_printf("fs_test : %d\n", fs_test(&fsdesc));
 
         current->p_registers.reg_rax = 0;
         break;
@@ -548,17 +561,17 @@ void exception(x86_64_registers* reg) {
         int64_t r = fs_alloc_inode(&fsdesc);
         if (r < 0) {
             log_printf("alloc inode failed %d\n", r);
-            current->p_registers.reg_rax = -1;
+            current->p_registers.reg_rax = r;
             break;
         }
         uint32_t inode = (uint32_t) r;
 
         log_printf("inode : %d\n", inode);
 
-        int r1 = fs_touch(&fsdesc, path, inode);
-        if (r1 < 0) {
-            log_printf("touch failed %d\n", r1);
-            current->p_registers.reg_rax = -1;
+        r = fs_touch(&fsdesc, path, inode);
+        if (r < 0) {
+            log_printf("touch failed %d\n", r);
+            current->p_registers.reg_rax = r;
             break;
         }
 
@@ -813,19 +826,21 @@ void exception(x86_64_registers* reg) {
     case INT_SYS_CHDIR: {
         log_printf("proc %d: exception INT_SYS_CHDIR (%d)\n", current->p_pid, reg->reg_intno);
 
-
         uintptr_t va = current->p_registers.reg_rdi;
         vamapping vam = virtual_memory_lookup(current->p_pagetable, va);
-        const char *path = (char *) vam.pa;
+        normpath path = resolve_path((char *) vam.pa);;
 
-        log_printf("cwd : %s\n", current->p_cwd);
-        log_printf("path : %s\n", path);
+        int64_t r = fs_getattr(&fsdesc, path);
+        if (r < 0) {
+            current->p_registers.reg_rax = r;
+            break;
+        }
+        if (r > 0) {
+            current->p_registers.reg_rax = -ENOTDIR;
+            break;
+        }
 
-        char absolute_path[256];
-        join_path(current->p_cwd, path, absolute_path);
-        log_printf("absolute path : %s\n", absolute_path);
-
-        strcpy(current->p_cwd, absolute_path);
+        copy_to_buffer(current->p_cwd, path);
 
         current->p_registers.reg_rax = 0;
         break;

@@ -76,11 +76,11 @@ char scan_char(void) {
     return c;
 }
 
-void scan_line(char* dst, int length_max) {
-    int length = 0;
+unsigned int scan_line(char* dst, unsigned int length_max) {
+    unsigned int length = 0;
 
     while (1) {
-        int c = scan_char();
+        unsigned char c = scan_char();
 
         if (c == '\b') {
             if (length != 0) {
@@ -89,8 +89,8 @@ void scan_line(char* dst, int length_max) {
             }
         } else if (c == '\n') {
             app_printf(0, "%c", c);
-            dst[length] = 0;
-            return;
+            dst[length] = '\0';
+            return length;
         } else if (c >= 32 && c <= 127) {
             if (length < length_max) {
                 app_printf(0, "%c", c);
@@ -132,9 +132,9 @@ char** split_string(char* str, char sep) {
 }
 
 
-__attribute__((noreturn)) void handle_error(int r) {
+void app_print_error(int r) {
     switch (r) {
-        case ENOENT    :
+        case ENOENT:
             app_printf(1, "Error: %s\n", "No such file or directory");
             break;
         case EIO:
@@ -143,10 +143,25 @@ __attribute__((noreturn)) void handle_error(int r) {
         case ENOTDIR:
             app_printf(1, "Error: %s\n", "Not a directory");
             break;
+        case EINVAL:
+            app_printf(1, "Error: %s\n", "Invalid argument");
+            break;
+        case ENOSPC:
+            app_printf(1, "Error: %s\n", "No space left on device");
+            break;
+        case EEXIST:
+            app_printf(1, "Error: %s\n", "File already exists");
+            break;
+        case ENAMETOOLONG:
+            app_printf(1, "Error: %s\n", "File name too long");
+            break;
         default:
             app_printf(1, "Error %d: %s\n", r, "Unknown error");
             break;
     }
+}
 
+__attribute__((noreturn)) void handle_error(int r) {
+    app_print_error(r);
     sys_exit(r);
 }

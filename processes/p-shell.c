@@ -17,7 +17,11 @@ int exec_simple_cmd(char** cmd_line) {
         char* path = cmd_line[1];
 
         r = sys_chdir(path);
-        assert(r == 0);
+        if (r < 0) {
+            app_print_error(-r);
+            return -r;
+        }
+        
         return 0;
     }
     

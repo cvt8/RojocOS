@@ -213,9 +213,11 @@ void app_printf(int colorid, const char* format, ...);
 
 char scan_char(void);
 
-void scan_line(char* dst, int length_max);
+unsigned int scan_line(char* dst, unsigned int length_max);
 
 char** split_string(char* str, char sep);
+
+void app_print_error(int r);
 
 __attribute__((noreturn)) void handle_error(int r);
 

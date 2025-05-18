@@ -21,14 +21,16 @@ void process_main(int argc, char* argv[]) {
     }
 
     char buffer[TEXT_SIZE];
-    scan_line(buffer, TEXT_SIZE-1);
-    buffer[TEXT_SIZE-1] = '\0';
+    unsigned int length = scan_line(buffer, TEXT_SIZE-2);
+    buffer[length] = '\n';
+    buffer[length+1] = '\0';
 
     int fd = sys_open(argv[1]);
-    assert(fd >= 0);
+    if (fd < 0) handle_error(-fd);
     //app_printf(2, "%s opened -> %d\n", argv[1], fd);
 
-    //ssize_t r = sys_write(fd, buffer, TEXT_SIZE);
+    ssize_t r = sys_write(fd, buffer, TEXT_SIZE);
+    if (r < 0) handle_error(-r);
     //app_printf(2, "%s writed -> %d\n", argv[1], r);
 
     sys_exit(0);

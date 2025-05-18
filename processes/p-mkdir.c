@@ -23,10 +23,8 @@ void process_main(int argc, char* argv[]) {
         usage();
     }
 
-    app_printf(0, "mkdir %s\n", argv[1]);
-
     int r = sys_mkdir(argv[1]);
-    assert(r >= 0);
+    if (r < 0) handle_error(-r);
 
     sys_exit(0);
 }
