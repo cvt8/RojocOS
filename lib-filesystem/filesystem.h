@@ -52,7 +52,7 @@ int64_t fs_getattr(fs_descriptor *fsdesc, normpath path);
 
 int fs_truncate(fs_descriptor *fsdesc, fs_ino ino, off_t size);
 
-ssize_t fs_read(fs_descriptor *fsdesc, fs_ino ino, void *buf, size_t size, off_t offset);
+ssize_t fs_read(fs_descriptor *fsdesc, fs_ino ino, void *buf, size_t size, uint64_t offset);
 
 ssize_t fs_write(fs_descriptor *fsdesc, fs_ino ino, const void *buf, size_t size, uint64_t offset);
 

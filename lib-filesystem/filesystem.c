@@ -45,6 +45,27 @@ static const uint8_t ZERO = 0;
 static const uint8_t ONE = 1;
 
 
+int unref_inode(fs_descriptor *fsdesc, uint32_t ino) {
+    fs_inode_entry entry;
+    int r = fsdesc->fsdr((uintptr_t) &entry, fsdesc->inode_table_offset + ino * INODE_ENTRY_SIZE, INODE_ENTRY_SIZE);
+    if (r < 0) return r;
+
+    assert(entry.ref > 0);
+    entry.ref -= 1;
+
+    if (entry.ref == 0) {
+        memset(&entry, 0, INODE_ENTRY_SIZE);
+        for (uint32_t i = 0; i < entry.block_count; i++) {
+            fsdesc->fsdw((uintptr_t) &ZERO, fsdesc->data_offset + entry.start_block + i * BLOCK_SIZE, BLOCK_SIZE);
+        }
+    }
+
+    r = fsdesc->fsdw((uintptr_t) &entry, fsdesc->inode_table_offset + ino * INODE_ENTRY_SIZE, INODE_ENTRY_SIZE);
+    if (r < 0) return r;
+
+    return 0;
+}
+
 
 int decrypt_block(fs_descriptor *fsdesc, uint32_t index, struct AES_ctx *ctx, uint8_t *buffer) {
     uintptr_t addr = fsdesc->data_offset + index * BLOCK_SIZE;
@@ -204,10 +225,9 @@ int fs_init(fs_descriptor *fsdesc, fs_disk_reader fsdr, fs_disk_writer fsdw, fs_
     return 0;
 }
 
-ssize_t fs_read(fs_descriptor *fsdesc, fs_ino ino, void *buf, size_t size, off_t offset) {
+ssize_t fs_read(fs_descriptor *fsdesc, fs_ino ino, void *buf, size_t size, uint64_t offset) {
     if (size > FS_IO_MAX_SIZE)
         return -EINVAL;
-
 
     uintptr_t entry_addr = METADATA_SIZE + ino * INODE_ENTRY_SIZE;
 
@@ -215,20 +235,48 @@ ssize_t fs_read(fs_descriptor *fsdesc, fs_ino ino, void *buf, size_t size, off_t
     int r = fsdesc->fsdr((uintptr_t) &entry, entry_addr, INODE_ENTRY_SIZE);
     if (r < 0) return r;
 
+    if (offset >= entry.size)
+        return 0;
+
     if (size + offset > entry.size)
         size = entry.size - offset;
 
-    log_printf("fs_read / entry.start_block : %d\n", entry.start_block);
+    uint8_t *dst = (uint8_t *)buf;
+    size_t bytes_read = 0;
+    uint32_t start_block = offset / BLOCK_SIZE;
+    uint32_t end_block = (offset + size - 1) / BLOCK_SIZE;
+    uint32_t offset_in_block = offset % BLOCK_SIZE;
 
-    uintptr_t start_addr = fsdesc->data_offset + entry.start_block * BLOCK_SIZE + offset;
+    struct AES_ctx ctx;
+    uint8_t block_buf[BLOCK_SIZE];
 
-    r = fsdesc->fsdr((uintptr_t) buf, start_addr, size);
-    if (r < 0) return r;
+    for (uint32_t block_idx = start_block; block_idx <= end_block; block_idx++) {
+        // Initialize AES context with the correct IV for this block
+        uint128_t iv = entry.cipher_iv + block_idx;
+        AES_init_ctx_iv(&ctx, entry.cipher_key, (uint8_t *)&iv);
 
-    return size;
+        // Decrypt the block
+        r = decrypt_block(fsdesc, entry.start_block + block_idx, &ctx, block_buf);
+        if (r < 0) return r;
+
+        // Calculate how many bytes to copy from this block
+        size_t block_offset = (block_idx == start_block) ? offset_in_block : 0;
+        size_t bytes_to_copy = BLOCK_SIZE - block_offset;
+        
+        if (bytes_to_copy > size - bytes_read)
+            bytes_to_copy = size - bytes_read;
+
+        // Copy the decrypted data to the output buffer
+        memcpy(dst + bytes_read, block_buf + block_offset, bytes_to_copy);
+        bytes_read += bytes_to_copy;
+    }
+
+    return bytes_read;
 }
 
 ssize_t fs_write(fs_descriptor *fsdesc, fs_ino ino, const void *buf, size_t size, uint64_t offset) {
+    log_printf("fs_write / ino: %d, size: %zu, offset: %llu\n", ino, size, offset);
+    
     if (size > FS_IO_MAX_SIZE)
         return -EINVAL;
 
@@ -237,22 +285,29 @@ ssize_t fs_write(fs_descriptor *fsdesc, fs_ino ino, const void *buf, size_t size
     int64_t r = fsdesc->fsdr((uintptr_t) &entry, entry_addr, INODE_ENTRY_SIZE);
     if (r < 0) return r;
 
+    log_printf("fs_write / current file size: %llu, block_count: %u, start_block: %u\n", 
+               entry.size, entry.block_count, entry.start_block);
+
     if (entry.size < offset)
         return -EINVAL;
     
     uint32_t total_block = SIZE_TO_BLOCK(offset+size); // Total number of blocks needed to write the file
-    int new_block = total_block - entry.block_count;
+    uint32_t new_block = total_block - entry.block_count;
     int aba = -1;
+
+    log_printf("fs_write / total_block needed: %u, new blocks needed: %d\n", total_block, new_block);
 
     // If we need more blocks than the file already has, we need to allocate new blocks
     if (new_block > 0) {
         aba = are_blocks_avaiblable(fsdesc, entry.start_block + entry.block_count, new_block);
         if (aba < 0) return aba;
+        log_printf("fs_write / blocks available after current file: %s\n", aba ? "yes" : "no");
     }
 
     uint8_t partial_block[BLOCK_SIZE];
     if (offset % BLOCK_SIZE != 0) {
         // If the offset is not a multiple of the block size, we need to handle the partial block
+        log_printf("fs_write / handling partial block at offset %llu\n", offset);
         struct AES_ctx ctx;
         uint128_t iv = entry.cipher_iv + offset / BLOCK_SIZE;
         AES_init_ctx_iv(&ctx, entry.cipher_key, (uint8_t *) &iv);
@@ -264,15 +319,19 @@ ssize_t fs_write(fs_descriptor *fsdesc, fs_ino ino, const void *buf, size_t size
 
     if (aba == 0) {
         // If the blocks right after the last block of the file are not available, we need to search for free blocks
+        log_printf("fs_write / searching for %u free blocks\n", total_block);
         r = search_free_blocks(fsdesc, total_block);
         if (r < 0) return r;
 
         uint32_t new_start_block = (uint32_t) r;
+        log_printf("fs_write / found new start block: %u\n", new_start_block);
+        
         uint8_t dst_key[FS_KEY_SIZE];
         uint128_t dst_iv;
         fsdesc->fsrng(dst_key, FS_KEY_SIZE);
         fsdesc->fsrng((uint8_t *) &dst_iv, FS_IV_SIZE);
 
+        log_printf("fs_write / copying %u blocks from old location to new\n", offset / BLOCK_SIZE);
         copy_block(fsdesc,
             entry.start_block, entry.cipher_key, entry.cipher_iv,
             new_start_block, dst_key, dst_iv,
@@ -289,6 +348,7 @@ ssize_t fs_write(fs_descriptor *fsdesc, fs_ino ino, const void *buf, size_t size
     
     // Handle partial block
     if (offset % BLOCK_SIZE != 0) {
+        log_printf("fs_write / writing partial block at block index %u\n", offset / BLOCK_SIZE);
         r = encrypt_block(fsdesc, entry.start_block + offset / BLOCK_SIZE, &ctx, partial_block);
         if (r < 0) return r;
     }
@@ -297,8 +357,11 @@ ssize_t fs_write(fs_descriptor *fsdesc, fs_ino ino, const void *buf, size_t size
     if (new_block) {
         int final_blocks_index = entry.start_block + SIZE_TO_BLOCK(offset);
         uintptr_t final_blocks_addr = fsdesc->data_offset + final_blocks_index * BLOCK_SIZE;
+        
+        log_printf("fs_write / writing %u full blocks starting at index %d\n", 
+                  new_block, final_blocks_index);
 
-        for (uint32_t i = 0; i < size - (BLOCK_SIZE - offset % BLOCK_SIZE); i++) {
+        for (uint32_t i = 0; i < new_block; i++) {
             encrypt_block(fsdesc, final_blocks_index + i, &ctx, buf);
             buf += BLOCK_SIZE;
         }
@@ -307,16 +370,21 @@ ssize_t fs_write(fs_descriptor *fsdesc, fs_ino ino, const void *buf, size_t size
     }
 
     entry.size = offset + size;
+    log_printf("fs_write / updating inode entry, new size: %llu, block_count: %u\n", 
+               entry.size, entry.block_count);
+               
     r = fsdesc->fsdw((uintptr_t) &entry, entry_addr, INODE_ENTRY_SIZE);
     if (r < 0) return r;
 
     if (aba == 0) {
+        log_printf("fs_write / marking %u blocks as used\n", total_block - new_block);
         for (uint32_t i = 0; i < total_block - new_block; i++) {
             r = set_availability(fsdesc, entry.start_block + i, &ZERO);
             if (r < 0) return r;
         }
     }
     
+    log_printf("fs_write / completed successfully, wrote %zu bytes\n", size);
     return size;
 }
 
@@ -508,11 +576,8 @@ int fs_remove(fs_descriptor *fsdesc, normpath path) {
             child_node_index = node.children[i].index;
             assert(child_node_index);
 
-            node.children[i].index = 0;
-            node.children[i].name[0] = '\0';
-            node.children[i].index = node.children[node.children_count-1].index;
-            memcpy(node.children[i].name, node.children[node.children_count-1].name, NAME_SIZE);
             node.children_count -= 1;
+            memcpy(&node.children[i], &node.children[node.children_count-1], sizeof(fd_node_child_t));
             break;
         }
     }
@@ -523,16 +588,19 @@ int fs_remove(fs_descriptor *fsdesc, normpath path) {
     r = fsdesc->fsdw((uintptr_t) &node, fsdesc->tree_offset + parent_node_index * NODE_SIZE, NODE_SIZE);
     if (r < 0) return r;
 
-    memset(&node, 0, NODE_SIZE);
     r = fsdesc->fsdr((uintptr_t) &node, fsdesc->tree_offset + child_node_index * NODE_SIZE, NODE_SIZE);
+    if (r < 0) return r;
+
+    if (node.value)
+        unref_inode(fsdesc, node.value);
+
+    memset(&node, 0, NODE_SIZE);
+
+    r = fsdesc->fsdw((uintptr_t) &node, fsdesc->tree_offset + child_node_index * NODE_SIZE, NODE_SIZE);
     if (r < 0) return r;
 
     r = fsdesc->fsdw((uintptr_t) &ZERO, fsdesc->tree_usage_offset + child_node_index, 1);
     if (r < 0) return r;
-    
-    /*for (int i = 0; i < node.block_count; i++) {
-        fsdesc->fsdw((uintptr_t) &ZERO, fsdesc->data_offset + node.start_block + i * BLOCK_SIZE, BLOCK_SIZE);
-    }*/
 
     return 0;
 }
